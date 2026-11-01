@@ -1,0 +1,14 @@
+{
+  "_comment": "Syllables used to invent province and realm names per culture.",
+  "latin":    { "start": ["Val","Mont","Cas","Ter","Por","San","Alb","Cor","Vel","Mar","Ros","Fer","Lu","Ar","Bel","Sal","Ver","Tor"], "end": ["torre","aro","ena","ino","ona","ella","ano","era","ugia","enza","onte","ia","oza","edo","ana"] },
+  "frankish": { "start": ["Bel","Mor","Cha","Ver","Roc","Lan","Beau","Mont","Pon","Aub","Gis","Lor","Sen","Rou"], "end": ["rive","ville","mont","lieu","court","gny","bourg","aine","oux","esse","ac","ais"] },
+  "germanic": { "start": ["Hart","Ost","Lin","Wal","Ros","Eber","Wolf","Dorn","Hel","Brun","Gold","Stein","Asch","Kron"], "end": ["wald","mark","burg","heim","feld","stadt","dorf","berg","au","bach","hausen","rode"] },
+  "norse":    { "start": ["Skar","Hal","Vik","Ulf","Tor","Sig","Brand","Ask","Kol","Ran","Grim","Hvit","Jor","Ey"], "end": ["holm","vik","heim","by","stad","ness","fjord","dal","sund","ey","vang","borg"] },
+  "slavic":   { "start": ["Vol","Dre","Pere","Zla","Bel","Vys","Gor","Nov","Kras","Rad","Sve","Mir","Stra","Lub"], "end": ["esk","grad","ov","ice","ava","nik","ets","sk","omir","ina","ograd","yn"] },
+  "magyar":   { "start": ["Sze","Ka","Bor","Er","Gyo","Tar","Pecs","Vas","Bala","Ho","Sar","Ke"], "end": ["ged","lmar","sod","ny","r","vár","lak","egy","tó","mező","hely","falva"] },
+  "baltic":   { "start": ["Sau","Kal","Ruk","Vel","Taur","Lie","Mei","Kur","Ais","Jur","Pal","Vir"], "end": ["le","vala","ava","uva","iai","maa","kis","ene","ola","ta","ma","nai"] },
+  "greek":    { "start": ["Ther","Ach","Kor","Mel","Thes","Lyk","Pel","Nik","Chal","Ept","Sym","Ath"], "end": ["aly","aia","inthe","os","ion","ene","polis","assa","ike","ora","ymna","eia"] },
+  "turkic":   { "start": ["Yar","Kara","Ak","Tegin","Bor","Kum","Sar","Tal","Ay","Kok","Ural","Bay"], "end": ["uk","kent","tash","su","bek","dag","ova","kul","yurt","han","sar","tepe"] },
+  "arab":     { "start": ["Qas","Dar","Ras","Ham","Jab","Bur","Zah","Sal","Wad","Nas","Ram","Kha"], "end": ["ra","im","ada","iya","ir","ah","an","ira","uq","awa","ab","ain"] },
+  "berber":   { "start": ["Taz","Tin","Aza","Ifr","Ama","Tag","Ida","Tiz","Agh","Tam","Igh","Ten"], "end": ["rut","iqa","mar","ghit","dal","ouft","zert","nit","ast","oun","ert","illa"] }
+}
