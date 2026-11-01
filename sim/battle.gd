@@ -160,6 +160,11 @@ func add_army(a: Army, side: int) -> void:
 	var realm := world.realms[a.realm]
 	might[side] = 1.0 + 0.1 * realm.has_relic_effect("battle")
 	spirit[side] = 10.0 * realm.has_relic_effect("morale")
+	var hero := world.dynasty.person(a.hero)
+	if hero != null:
+		spirit[side] += hero.leadership * 2.0
+		if hero.id == realm.ruler:
+			spirit[side] += 8.0   # the ruler in person is on the field
 	var culture := realm.culture
 	var regs := _make_regiments(float(a.troops), a.quality, _composition(culture, a.quality), a.id, side)
 	var dug := a.order == "hold" and a.dug_in >= 4.0

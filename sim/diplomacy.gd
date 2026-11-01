@@ -85,6 +85,9 @@ func opinion_parts(of_id: int, toward_id: int) -> Array:
 			parts.append(["Pious ruler", 10.0 if a.faith == b.faith else -10.0])
 	if b.oathbreaker >= 1.0:
 		parts.append(["Oathbreaker", -b.oathbreaker])
+	var their_ruler := world.dynasty.ruler_of(b)
+	if their_ruler != null and their_ruler.diplomacy != 5:
+		parts.append(["Ruler's charm", (their_ruler.diplomacy - 5) * 2.0])
 	var mem := float(a.memories.get(b.id, 0.0))
 	if absf(mem) >= 1.0:
 		parts.append(["Past dealings", mem])
@@ -418,6 +421,13 @@ func answer_offer(offer_id: int, accept: bool) -> void:
 			else:
 				remember(from, me, -30.0)
 				world.post_news("You refuse %s's demand. They will not forget it." % world.realms[from].name, 1)
+		"marriage":
+			var theirs := world.dynasty.person(int(data["theirs"]))
+			var mine := world.dynasty.person(int(data["mine"]))
+			if accept and world.dynasty.eligible(theirs) and world.dynasty.eligible(mine):
+				world.dynasty.wed(mine, theirs)
+			elif not accept:
+				remember(from, me, -5.0)
 		"vassal_demand":
 			if accept:
 				add_treaty("vassal", from, me)

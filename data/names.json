@@ -49,6 +49,18 @@
       "Fernando",
       "Gonzalo",
       "Pelayo"
+    ],
+    "given_f": [
+      "Urraca",
+      "Elvira",
+      "Sancha",
+      "Teresa",
+      "Berenguela",
+      "Jimena",
+      "Mafalda",
+      "Constanza",
+      "Lucia",
+      "Matilda"
     ]
   },
   "frankish": {
@@ -93,6 +105,18 @@
       "Renaud",
       "Gautier",
       "Foulques"
+    ],
+    "given_f": [
+      "Adèle",
+      "Ermengarde",
+      "Aliénor",
+      "Mahaut",
+      "Béatrice",
+      "Agnès",
+      "Isabeau",
+      "Blanche",
+      "Clémence",
+      "Yolande"
     ]
   },
   "germanic": {
@@ -137,6 +161,18 @@
       "Hartmann",
       "Bruno",
       "Wulfstan"
+    ],
+    "given_f": [
+      "Gisela",
+      "Mathilde",
+      "Adelheid",
+      "Kunigunde",
+      "Hedwig",
+      "Richenza",
+      "Ealdgyth",
+      "Aethelflaed",
+      "Gertrud",
+      "Irmgard"
     ]
   },
   "norse": {
@@ -181,6 +217,18 @@
       "Ragnvald",
       "Svein",
       "Ottar"
+    ],
+    "given_f": [
+      "Astrid",
+      "Ingrid",
+      "Gunnhild",
+      "Thyra",
+      "Sigrid",
+      "Ragnhild",
+      "Estrid",
+      "Ingeborg",
+      "Helga",
+      "Ulfhild"
     ]
   },
   "slavic": {
@@ -225,6 +273,18 @@
       "Radim",
       "Stoyan",
       "Vratislav"
+    ],
+    "given_f": [
+      "Ludmila",
+      "Olga",
+      "Dobrawa",
+      "Vyšeslava",
+      "Anastasia",
+      "Zbyslava",
+      "Rogneda",
+      "Milena",
+      "Bogumila",
+      "Dragomira"
     ]
   },
   "magyar": {
@@ -267,6 +327,18 @@
       "Csanád",
       "Lehel",
       "Ompud"
+    ],
+    "given_f": [
+      "Sarolt",
+      "Adelhaid",
+      "Ilona",
+      "Katalin",
+      "Piroska",
+      "Erzsébet",
+      "Sofia",
+      "Judit",
+      "Anasztázia",
+      "Margit"
     ]
   },
   "baltic": {
@@ -307,6 +379,16 @@
       "Daumantas",
       "Kęstutis",
       "Algirdas"
+    ],
+    "given_f": [
+      "Morta",
+      "Aldona",
+      "Birutė",
+      "Gaile",
+      "Ona",
+      "Danute",
+      "Rimgaile",
+      "Jaunute"
     ]
   },
   "greek": {
@@ -349,6 +431,18 @@
       "Andronikos",
       "Isaac",
       "Michael"
+    ],
+    "given_f": [
+      "Theodora",
+      "Zoe",
+      "Anna",
+      "Eudokia",
+      "Irene",
+      "Helena",
+      "Maria",
+      "Theophano",
+      "Agatha",
+      "Sophia"
     ]
   },
   "turkic": {
@@ -391,6 +485,18 @@
       "Sanjar",
       "Arslan",
       "Toghan"
+    ],
+    "given_f": [
+      "Terken",
+      "Altun",
+      "Aybike",
+      "Gevher",
+      "Khatun",
+      "Seljuka",
+      "Ilbilge",
+      "Tolun",
+      "Kutlu",
+      "Saljuq"
     ]
   },
   "arab": {
@@ -433,6 +539,18 @@
       "Nasir",
       "Tariq",
       "Faisal"
+    ],
+    "given_f": [
+      "Fatima",
+      "Aisha",
+      "Zubayda",
+      "Khadija",
+      "Sitt",
+      "Layla",
+      "Maryam",
+      "Asma",
+      "Ruqayya",
+      "Hind"
     ]
   },
   "berber": {
@@ -475,6 +593,18 @@
       "Masinissa",
       "Yuba",
       "Aksil"
+    ],
+    "given_f": [
+      "Zaynab",
+      "Tinhinan",
+      "Kahina",
+      "Tamima",
+      "Dihya",
+      "Fanna",
+      "Tagrawla",
+      "Mennana",
+      "Tazit",
+      "Zhira"
     ]
   }
 }

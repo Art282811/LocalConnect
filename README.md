@@ -4,8 +4,8 @@ A real-time medieval kingdom builder for phones: found a tiny realm anywhere on 
 map of Europe and the Near East, grow it into an empire, and keep it alive through
 war, faith, diplomacy and family politics.
 
-This repo contains **Layers 1–4** (living map, your realm, battles, diplomacy &
-religion) from the
+This repo contains **Layers 1–5** (living map, your realm, battles, diplomacy &
+religion, dynasty & drama) from the
 design document (`docs/game-design-document.pdf`).
 
 ## Running it
@@ -130,12 +130,40 @@ Phone/tablet: one finger pans, two fingers pinch-zoom, tap to select.
 - **Map modes:** Realms, Faiths, Diplomacy (green = friendly, red = hostile,
   blue = allies).
 
+## What Layer 5 adds
+
+- **You play a dynasty, not one man.** Every realm has a ruling house: a ruler
+  with age, health, personality and skills (martial, stewardship, diplomacy,
+  learning), a spouse and children. A new ruler brings a new personality, so AI
+  realms change course when their kings die. Tap **Dynasty**.
+- **Life and death:** people age, fall ill, have children and die — of old age,
+  illness, in battle (if they lead an army: tap your army → **Lead it yourself**)
+  or on the block.
+- **Succession laws:** eldest son, eldest child, elective (the great families
+  vote — keep them loyal), or a chosen heir. Changing the law angers the nobles.
+- **Marriages** (Dynasty → Family, or Diplomacy → Royal marriage) win friends and
+  give **claims**: if a realm's line dies out, the best claimant inherits — a
+  ruler with a claim takes the whole realm in a personal union.
+- **Great families** with loyalty, power and ambition. Grant them provinces (they
+  keep a share of the income), revoke lands, bribe them, or marry into them.
+  Disloyal families refuse troops, form factions, demand titles, and may try a
+  **coup** or break away in **civil war**.
+- **Random events with choices:** plague, bad and bumper harvests, mercenaries,
+  a relic found, a travelling merchant, a comet, a rival's insult, a famous
+  knight, a child prodigy, a noble's demands, a ransom, a ruler's illness.
+  The game pauses while you decide.
+- **Heroes:** generals have tactics, siegecraft, logistics and leadership, gain
+  levels from battles, and can be killed or captured. Ransom, release or
+  execute prisoners (executions appal the other courts).
+- **You lose when your dynasty ends or is overthrown.** After a coup or a lost
+  election you may **play on as the new house** — the design doc's open question.
+
 ## Layout
 
 | Folder | What's in it |
 | --- | --- |
 | `data/` | `world.json` (coastlines, seas, terrain zones, rivers, cultures), `realms.json` (starting realms), `buildings.json` (costs, limits, effects), `religions.json` (faiths, holy sites, relics), `names.json` (name syllables). Edit these to tweak content. |
-| `sim/` | The simulation, separate from visuals: `world.gd` (clock, AI, wars, sieges, rebellions), `economy.gd` (resources, buildings, people, taxes, happiness, recruiting), `battle.gd` + `regiment.gd` (tactical battles), `diplomacy.gd` (opinion, treaties, trade), `religion.gd` (faiths, heads, crusades), `map_builder.gd` (provinces from the outline), `province.gd`, `realm.gd`, `army.gd`, `names.gd`. |
+| `sim/` | The simulation, separate from visuals: `world.gd` (clock, AI, wars, sieges, rebellions), `economy.gd` (resources, buildings, people, taxes, happiness, recruiting), `battle.gd` + `regiment.gd` (tactical battles), `diplomacy.gd` (opinion, treaties, trade), `religion.gd` (faiths, heads, crusades), `dynasty.gd` + `character.gd` (people, succession, nobles, events), `map_builder.gd` (provinces from the outline), `province.gd`, `realm.gd`, `army.gd`, `names.gd`. |
 | `map/` | `map_view.gd` (parchment map), `labels_view.gd` (names, settlements, roads), `overlay_view.gd` (armies, sieges, battle smoke), `battle_view.gd` (battle blocks and soldiers), `camera_rig.gd` (pan/zoom/pinch). |
 | `ui/` | `hud.gd` — top bar, news feed, info panel, spawn prompt, chronicle. |
 | `main.gd` | Wires it together and handles taps/selection. |
@@ -155,7 +183,7 @@ its map data. iOS builds need a Mac with Xcode.
 2. ~~Layer 2 — Your realm~~
 3. ~~Layer 3 — Battles~~
 4. ~~Layer 4 — Diplomacy, religion, crusades~~
-5. Layer 5 — Dynasty & drama
+5. ~~Layer 5 — Dynasty & drama~~
 6. Layer 6 — Polish & phone builds
 
 Not yet: save/load, real province shapes, sound, art pass.

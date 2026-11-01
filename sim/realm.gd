@@ -47,6 +47,14 @@ var relics: Array[String] = []
 var memories: Dictionary = {}  # other realm id -> opinion from events (decays)
 var oathbreaker: float = 0.0   # opinion penalty everyone applies (decays)
 
+# Layer 5: the ruling house and the great families.
+var ruler: int = -1            # character id
+var house: String = ""         # ruling dynasty
+var succession: String = "eldest_son"  # eldest_son, eldest_child, elective, chosen
+var chosen_heir: int = -1
+var nobles: Array[Dictionary] = []      # {name, head, loyalty, ambition, power, granted: Array[int], faction}
+var prisoners: Array[int] = []          # characters held at this court
+
 
 func has_relic_effect(effect: String) -> int:
 	var n := 0

@@ -19,6 +19,7 @@ var _pending := ""      # "raid" or "join": the next tap picks the target
 var _alert_index := 0
 var _diplo_target := -1
 var _mode_timer := 0.0
+var _speed_before_event := 1.0
 const MAP_MODES := ["realms", "faiths", "diplomacy"]
 var _ui_timer := 0.0
 
@@ -50,6 +51,9 @@ func _ready() -> void:
 	hud.realm_pressed.connect(_show_realm)
 	hud.battle_alert_pressed.connect(_on_battle_alert)
 	hud.map_mode_pressed.connect(_on_map_mode)
+	hud.dynasty_pressed.connect(_show_dynasty)
+	hud.continue_pressed.connect(_on_continue)
+	hud.event_closed.connect(_on_event_closed)
 
 	randomize()
 	_new_world(randi())
@@ -63,6 +67,7 @@ func _new_world(seed_value: int) -> void:
 	world.battle_fought.connect(func(pos: Vector2, troops: int) -> void: overlay.add_battle(pos, troops))
 	world.player_lost.connect(_on_player_lost)
 	world.battle_ended.connect(_on_battle_ended)
+	world.dynasty_lost.connect(_on_dynasty_lost)
 	map_view.world = world
 	battle_view.world = world
 	labels.world = world
@@ -163,6 +168,7 @@ func _on_spectate() -> void:
 
 func _refresh_hud() -> void:
 	hud.set_date(world.date_string())
+	_maybe_show_event()
 	if world.player_realm != -1:
 		var r := world.realms[world.player_realm]
 		var text := "%s · %d provinces · %d troops" % [r.full_name(), r.provinces.size(), world.realm_troops(r)]
@@ -203,6 +209,8 @@ func _refresh_hud() -> void:
 	elif _info_kind == "diplomacy" and _diplo_target != -1:
 		if world.realms[_diplo_target].alive and world.player_realm != -1:
 			hud.update_info_body(_diplomacy_text(_diplo_target))
+	elif _info_kind == "dynasty" and world.player_realm != -1:
+		hud.update_info_body(_dynasty_text(world.realms[world.player_realm]))
 	elif _info_kind == "crusades":
 		hud.update_info_body(_crusades_text())
 	elif _info_kind == "realm":
@@ -383,6 +391,9 @@ func _army_actions(a: Army) -> Array:
 	if p.owner != -1 and world.at_war(a.realm, p.owner) and a.path.is_empty():
 		actions.append(["Assault walls (garrison ~%d)" % int(world.garrison_size(p)), _act_assault.bind(a.id)])
 	actions.append(["Halt", _act_halt.bind(a.id)])
+	var r := world.realms[a.realm]
+	if a.hero != r.ruler:
+		actions.append(["Lead it yourself", _act_lead.bind(a.id)])
 	var c := world.religion.active_crusade(world.realms[a.realm].faith)
 	if not c.is_empty():
 		var leader := world.religion.lead_realm(c)
@@ -442,6 +453,12 @@ func _army_text(a: Army) -> String:
 		"raid": "Raiding",
 	}
 	var text := "Lord [b]%s[/b] of %s · %s general, skill %d\n" % [a.general, r.name, a.general_trait, a.skill]
+	var hero := world.dynasty.person(a.hero)
+	if hero != null:
+		if hero.id == r.ruler:
+			text = "[b]%s[/b], ruler of %s, leads in person · %s\n" % [hero.name, r.name, a.general_trait]
+		else:
+			text += "Level %d · tactics %d, siegecraft %d, logistics %d, leadership %d\n" % [hero.level, hero.tactics, hero.siegecraft, hero.logistics, hero.leadership]
 	text += "[b]%d[/b] troops · quality %.1f · stance %s\n" % [a.troops, a.quality, STANCE_NAMES[a.stance].to_lower()]
 	text += "%s at %s" % [task_names.get(a.task, a.task), world.provinces[a.province].name]
 	if not a.path.is_empty():
@@ -738,7 +755,11 @@ func _realm_text(r: Realm) -> String:
 		if p.build_id != "":
 			building += 1
 	var n := maxi(r.provinces.size(), 1)
-	var text := "%d provinces · %d people · average happiness %d\n" % [r.provinces.size(), int(pop), int(mood / n)]
+	var text := ""
+	var ruler := world.dynasty.ruler_of(r)
+	if ruler != null:
+		text += "Ruled by [b]%s %s[/b], age %d\n" % [ruler.name, r.house, ruler.age(world.day)]
+	text += "%d provinces · %d people · average happiness %d\n" % [r.provinces.size(), int(pop), int(mood / n)]
 	text += "Taxes: [b]%s[/b] · troops %d · manpower %d / %d\n" % [Economy.TAX_NAMES[r.tax], world.realm_troops(r), int(r.manpower), int(eco.manpower_cap(r))]
 	text += "Constructions under way: %d\n" % building
 	var rel := world.religion
@@ -842,6 +863,7 @@ func _show_diplomacy(rid: int) -> void:
 		actions.append([label, _act_propose.bind(kind, rid), enabled])
 	if dip.has_treaty("vassal", me, rid):
 		actions.append(["Release vassal", _act_break.bind("vassal_release", rid)])
+	actions.append(["Royal marriage…", _show_royal_match.bind(rid)])
 	actions.append(["Back", _show_province.bind(world.realms[rid].capital)])
 	hud.show_info("Diplomacy: %s" % world.realms[rid].full_name(), _diplomacy_text(rid), actions)
 
@@ -974,6 +996,279 @@ func _act_lend(army_id: int, cid: int) -> void:
 	if not c.is_empty() and a != null and world.religion.lend_army(c, a):
 		_clear_selection()
 		hud.hide_info()
+
+
+# --- Dynasty ------------------------------------------------------------------------------
+
+func _person_line(c: Character) -> String:
+	var bits := "%s, %d" % [c.name, c.age(world.day)]
+	var spouse := world.dynasty.person(c.spouse)
+	if spouse != null:
+		bits += ", wed to %s" % spouse.name
+	if c.prisoner_of != -1:
+		bits += " [color=#9a2a1a](prisoner of %s)[/color]" % world.realms[c.prisoner_of].name
+	return bits
+
+
+func _dynasty_text(r: Realm) -> String:
+	var dyn := world.dynasty
+	var ruler := dyn.ruler_of(r)
+	var text := ""
+	if ruler != null:
+		text += "[b]%s %s[/b], age %d · %s\n" % [ruler.name, r.house, ruler.age(world.day), ruler.personality]
+		text += "Martial %d · stewardship %d · diplomacy %d · learning %d" % [ruler.martial, ruler.stewardship, ruler.diplomacy, ruler.learning]
+		if ruler.health < 1.0:
+			text += " · [color=#9a2a1a]ill[/color]"
+		text += "\n"
+		var spouse := dyn.person(ruler.spouse)
+		text += "Spouse: %s\n" % (_person_line(spouse) if spouse != null else "none")
+		var kids := PackedStringArray()
+		for cid in ruler.children:
+			var k := dyn.person(cid)
+			if k != null and k.alive():
+				kids.append("%s (%s)" % [_person_line(k), "daughter" if k.female else "son"])
+		text += "Children: %s\n" % (", ".join(kids) if not kids.is_empty() else "none")
+	text += "Succession: [b]%s[/b] · " % Dynasty.LAW_NAMES[r.succession]
+	var heir := dyn.person(dyn.heir_of(r))
+	if r.succession == "elective":
+		var vote := dyn.election(r)
+		text += "projected vote: your house %d, rivals %d" % [int(vote[1]), int(vote[2])]
+		if heir != null and heir.house != r.house:
+			text += " [color=#9a2a1a](you would lose the crown!)[/color]"
+		text += "\n"
+	elif heir != null:
+		text += "heir: %s\n" % _person_line(heir)
+	else:
+		text += "[color=#9a2a1a]no heir! If you die, your line ends.[/color]\n"
+	var claims := PackedStringArray()
+	for c in dyn.family_of(r):
+		for k in c.claims:
+			if world.realms[k].alive and k != r.id:
+				claims.append("%s → %s" % [c.name, world.realms[k].name])
+	if not claims.is_empty():
+		text += "Claims: %s\n" % ", ".join(claims)
+	text += "\n[b]Great families[/b]\n"
+	for f in r.nobles:
+		text += "%s — loyalty %d, power %d, ambition %d%s%s\n" % [f["name"], int(f["loyalty"]), int(f["power"]), int(f["ambition"]),
+			" · holds %d" % (f["granted"] as Array).size() if not (f["granted"] as Array).is_empty() else "",
+			" · [color=#9a2a1a]FACTION[/color]" if f["faction"] else ""]
+	if not r.prisoners.is_empty():
+		text += "\nPrisoners at your court: %d\n" % r.prisoners.size()
+	return text
+
+
+func _show_dynasty() -> void:
+	if world.player_realm == -1:
+		return
+	_clear_selection()
+	_info_kind = "dynasty"
+	var r := world.realms[world.player_realm]
+	var actions: Array = [["Family…", _show_family], ["Great families…", _show_nobles], ["Prisoners (%d)…" % r.prisoners.size(), _show_prisoners, not r.prisoners.is_empty()]]
+	for law in Dynasty.LAWS:
+		if law != r.succession:
+			actions.append(["Law: %s" % Dynasty.LAW_NAMES[law], _act_law.bind(law)])
+	hud.show_info("House %s" % r.house, _dynasty_text(r), actions)
+
+
+func _act_law(law: String) -> void:
+	var msg := world.dynasty.set_law(world.realms[world.player_realm], law)
+	if msg != "":
+		hud.add_news(msg)
+	_show_dynasty()
+
+
+func _show_family() -> void:
+	_info_kind = "family"
+	var r := world.realms[world.player_realm]
+	var dyn := world.dynasty
+	var text := ""
+	var actions: Array = []
+	for c in dyn.family_of(r):
+		var role := "kin"
+		if c.id == r.ruler:
+			role = "ruler"
+		elif c.father == r.ruler or c.mother == r.ruler:
+			role = "daughter" if c.female else "son"
+		text += "• %s — %s · M%d S%d D%d L%d\n" % [_person_line(c), role, c.martial, c.stewardship, c.diplomacy, c.learning]
+		if r.succession == "chosen" and c.id != r.ruler and r.chosen_heir != c.id:
+			actions.append(["Make %s heir" % c.name, _act_choose_heir.bind(c.id)])
+		if dyn.eligible(c):
+			actions.append(["Find a match for %s" % c.name, _show_matches.bind(c.id)])
+	if text == "":
+		text = "Your house has no one else at court."
+	actions.append(["Back", _show_dynasty])
+	hud.show_info("The family", text, actions)
+
+
+func _act_choose_heir(cid: int) -> void:
+	world.realms[world.player_realm].chosen_heir = cid
+	hud.add_news("%s is named heir." % world.dynasty.person(cid).name)
+	_show_family()
+
+
+func _show_matches(cid: int) -> void:
+	var dyn := world.dynasty
+	var c := dyn.person(cid)
+	var r := world.realms[world.player_realm]
+	var actions: Array = []
+	var text := "Matches for %s, age %d:\n" % [c.name, c.age(world.day)]
+	for o in dyn.candidates_for(c, 6):
+		var them := world.realms[o.realm]
+		var op := int(world.diplomacy.opinion(them.id, r.id))
+		text += "• %s of %s, %d (they think of you %+d)\n" % [o.name, them.name, o.age(world.day), op]
+		actions.append(["Wed %s of %s" % [o.name, them.name], _act_wed.bind(cid, o.id)])
+	for f in r.nobles:
+		actions.append(["Marry into the %s family" % f["name"], _act_marry_noble.bind(cid, str(f["name"]))])
+	actions.append(["Back", _show_family])
+	hud.show_info("A match for %s" % c.name, text, actions)
+
+
+func _act_wed(cid: int, oid: int) -> void:
+	var msg := world.dynasty.propose_marriage(world.dynasty.person(cid), world.dynasty.person(oid))
+	if msg != "":
+		hud.add_news(msg)
+	_show_family()
+
+
+func _act_marry_noble(cid: int, fam: String) -> void:
+	var r := world.realms[world.player_realm]
+	for f in r.nobles:
+		if f["name"] == fam:
+			hud.add_news(world.dynasty.marry_into(r, f, world.dynasty.person(cid)))
+	_show_family()
+
+
+func _show_royal_match(rid: int) -> void:
+	var dyn := world.dynasty
+	var me := world.realms[world.player_realm]
+	var actions: Array = []
+	var text := "Unwed members of both houses:\n"
+	for mine in dyn.family_of(me):
+		if not dyn.eligible(mine):
+			continue
+		for theirs in dyn.family_of(world.realms[rid]):
+			if dyn.eligible(theirs) and theirs.female != mine.female:
+				actions.append(["Wed %s to %s" % [mine.name, theirs.name], _act_wed.bind(mine.id, theirs.id)])
+	if actions.is_empty():
+		text = "No suitable match between your houses right now."
+	actions.append(["Back", _show_diplomacy.bind(rid)])
+	hud.show_info("Royal marriage with %s" % world.realms[rid].name, text, actions)
+
+
+func _show_nobles() -> void:
+	_info_kind = "nobles"
+	var r := world.realms[world.player_realm]
+	var actions: Array = []
+	var free := -1
+	for pid: int in r.provinces:
+		if pid != r.capital and world.provinces[pid].fief == "":
+			free = pid
+			break
+	var text := "Loyal families send troops and back your heir. Disloyal ones refuse troops, form factions, and may try a coup or break away with the lands you granted them.\n\n"
+	for f in r.nobles:
+		var head := world.dynasty.person(int(f["head"]))
+		text += "[b]%s[/b] (Lord %s) — loyalty %d, power %d, ambition %d%s\n" % [f["name"], head.name if head != null else "?", int(f["loyalty"]), int(f["power"]), int(f["ambition"]), " · [color=#9a2a1a]FACTION[/color]" if f["faction"] else ""]
+		var fam := str(f["name"])
+		actions.append(["Bribe %s (%dg)" % [fam, int(Dynasty.BRIBE_GOLD)], _act_noble.bind(fam, "bribe", -1), float(r.res["gold"]) >= Dynasty.BRIBE_GOLD])
+		if free != -1:
+			actions.append(["Grant %s to %s" % [world.provinces[free].name, fam], _act_noble.bind(fam, "grant", free)])
+		if not (f["granted"] as Array).is_empty():
+			actions.append(["Revoke land from %s" % fam, _act_noble.bind(fam, "revoke", -1)])
+	actions.append(["Back", _show_dynasty])
+	hud.show_info("Great families of %s" % r.name, text, actions)
+
+
+func _act_noble(fam: String, what: String, pid: int) -> void:
+	var r := world.realms[world.player_realm]
+	for f in r.nobles:
+		if f["name"] != fam:
+			continue
+		match what:
+			"bribe":
+				hud.add_news(world.dynasty.bribe(r, f))
+			"grant":
+				hud.add_news(world.dynasty.grant_province(r, f, pid))
+			"revoke":
+				hud.add_news(world.dynasty.revoke(r, f))
+	_show_nobles()
+
+
+func _show_prisoners() -> void:
+	_info_kind = "prisoners"
+	var r := world.realms[world.player_realm]
+	var dyn := world.dynasty
+	var actions: Array = []
+	var text := ""
+	for cid in r.prisoners:
+		var c := dyn.person(cid)
+		if c == null:
+			continue
+		var home := world.realms[c.realm].name if c.realm != -1 else "nowhere"
+		text += "• %s of %s (ransom %d gold)\n" % [c.title_name(), home, int(dyn.ransom_price(c))]
+		actions.append(["Ransom %s" % c.name, _act_prisoner.bind(cid, "ransom")])
+		actions.append(["Release %s" % c.name, _act_prisoner.bind(cid, "release")])
+		actions.append(["Execute %s" % c.name, _act_prisoner.bind(cid, "execute")])
+	if text == "":
+		text = "Your dungeons are empty."
+	actions.append(["Back", _show_dynasty])
+	hud.show_info("Prisoners", text, actions)
+
+
+func _act_prisoner(cid: int, what: String) -> void:
+	var c := world.dynasty.person(cid)
+	if c == null:
+		return
+	var msg := ""
+	match what:
+		"ransom":
+			msg = world.dynasty.release(c, true)
+		"release":
+			msg = world.dynasty.release(c, false)
+		"execute":
+			msg = world.dynasty.execute(c)
+	if msg != "":
+		hud.add_news(msg)
+	_show_prisoners()
+
+
+func _act_lead(army_id: int) -> void:
+	var msg := world.lead_army(army_id)
+	if msg != "":
+		hud.add_news(msg)
+	_select_army(army_id)
+
+
+# --- Events and endings ----------------------------------------------------------------------
+
+func _maybe_show_event() -> void:
+	if hud.is_event_open() or world.player_realm == -1 or world.dynasty.pending_events.is_empty():
+		return
+	var ev: Dictionary = world.dynasty.pending_events.pop_front()
+	_speed_before_event = world.speed if world.speed > 0.0 else _speed_before_event
+	world.speed = 0.0
+	hud.set_speed(0.0)
+	hud.show_event(str(ev["title"]), str(ev["text"]), ev["options"])
+
+
+func _on_event_closed() -> void:
+	if world.dynasty.pending_events.is_empty() and world.player_realm != -1:
+		world.speed = _speed_before_event
+		hud.set_speed(world.speed)
+
+
+func _on_dynasty_lost(text: String, can_continue: bool) -> void:
+	world.speed = 0.0
+	hud.set_speed(0.0)
+	_clear_selection()
+	hud.hide_info()
+	hud.show_game_over("Your dynasty has fallen", text, can_continue)
+
+
+func _on_continue() -> void:
+	world.speed = 1.0
+	hud.set_speed(1.0)
+	if world.player_realm != -1:
+		hud.add_news("You play on as the house of %s." % world.realms[world.player_realm].house)
 
 
 func _act_go_capital() -> void:

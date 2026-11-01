@@ -81,6 +81,12 @@ func yields(p: Province) -> Dictionary:
 	var wood := (float(t["wood"]) * popf * 0.5 + p.building_level("lumber_camp") * 1.2) * k
 	var stone := (float(t["stone"]) + p.building_level("quarry") * 1.0) * k
 	var iron := p.building_level("mine") * 0.6 * k
+	var steward := world.dynasty.ruler_of(r)
+	if steward != null:
+		gold *= 1.0 + (steward.stewardship - 5) * 0.03
+	if p.fief != "":
+		gold *= 0.75   # the noble family keeps a share
+		food *= 0.9
 	var faith := (p.building_level("church") * 0.4 + (0.6 if p.settlement == "monastery" else 0.0) + 0.05) * k
 	return {"food": food, "gold": gold, "wood": wood, "stone": stone, "iron": iron, "faith": faith}
 
@@ -236,6 +242,10 @@ func tick_day() -> void:
 		if r.alive and not r.relics.is_empty():
 			r.delta["faith"] = float(r.delta["faith"]) + r.has_relic_effect("faith")
 			r.delta["gold"] = float(r.delta["gold"]) + r.has_relic_effect("gold")
+	for r: Realm in world.realms:
+		var sage: Character = world.dynasty.ruler_of(r) if r.alive else null
+		if sage != null:
+			r.delta["faith"] = float(r.delta["faith"]) + sage.learning * 0.05
 	for a: Army in world.armies:
 		if a.dead:
 			continue
@@ -344,7 +354,7 @@ func monthly_manpower(r: Realm) -> float:
 	for pid: int in r.provinces:
 		var p := world.provinces[pid]
 		m += p.pop * 0.05 * (1.0 + 0.3 * p.building_level("barracks")) * clampf(p.happiness / 55.0, 0.4, 1.3)
-	return m
+	return m * world.dynasty.noble_factor(r)
 
 
 func manpower_cap(r: Realm) -> float:

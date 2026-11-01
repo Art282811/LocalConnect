@@ -24,4 +24,5 @@ var dug_in: float = 0.0        # days spent holding: stakes after a few
 var raid_days: int = 0
 var came_from: int = -1        # province we marched in from (battle facing)
 var battle: int = -1           # battle id while fighting
+var hero: int = -1             # commanding character
 var dead := false

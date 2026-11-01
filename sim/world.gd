@@ -10,6 +10,7 @@ signal battle_fought(pos: Vector2, troops: int)
 signal player_lost
 signal battle_started(b: Battle)
 signal battle_ended(b: Battle)
+signal dynasty_lost(text: String, can_continue: bool)
 
 # --- Tuning knobs ---------------------------------------------------------
 const DAY_SECONDS := 1.5          # real seconds per in-game day at 1x
@@ -54,6 +55,9 @@ var hex_radius := 50.0
 
 var names: NameGen
 var economy: Economy
+var diplomacy: Diplomacy
+var religion: Religion
+var dynasty: Dynasty
 var _accum := 0.0
 var _next_army_id := 0
 var _next_battle_id := 0
@@ -65,6 +69,10 @@ func setup(seed_value: int) -> void:
 	var world_data := _load_json("res://data/world.json")
 	names = NameGen.new(_load_json("res://data/names.json"), rng)
 	economy = Economy.new(self, _load_json("res://data/buildings.json"))
+	diplomacy = Diplomacy.new(self)
+	dynasty = Dynasty.new(self)
+	var religion_data := _load_json("res://data/religions.json")
+	religion = Religion.new(self, religion_data)
 
 	var builder := MapBuilder.new(world_data)
 	builder.build(rng)
@@ -75,6 +83,7 @@ func setup(seed_value: int) -> void:
 	map_size = builder.map_size
 	hex_radius = builder.radius
 
+	religion.assign_faiths(religion_data)
 	var realm_data := _load_json("res://data/realms.json")
 	for entry in realm_data.get("realms", []):
 		names.reserve(entry["name"])
@@ -162,6 +171,7 @@ func _create_realm(realm_name: String, culture: String, capital: int, personalit
 	r.founded_day = day
 	realms.append(r)
 	r.capital = capital
+	r.faith = provinces[capital].faith
 	_set_owner(provinces[capital], r.id)
 	var cap := provinces[capital]
 	if cap.settlement == "monastery":
@@ -170,6 +180,7 @@ func _create_realm(realm_name: String, culture: String, capital: int, personalit
 		cap.pop = Economy.TOWN_POP + 400.0
 		economy.init_level(cap)
 	refresh_fort(cap)
+	dynasty.setup_realm(r)
 	return r
 
 
@@ -292,8 +303,11 @@ func realm_troops(r: Realm) -> int:
 	return t
 
 
-func realm_strength(r: Realm) -> float:
+func realm_strength(r: Realm, with_vassals := true) -> float:
 	var s := 0.0
+	if with_vassals and diplomacy != null:
+		for v in diplomacy.vassals_of(r.id):
+			s += realm_strength(realms[v], false) * 0.5
 	for a: Army in armies_of(r.id):
 		s += a.troops * a.quality
 	return s + r.manpower * 0.4 + maxf(float(r.res["gold"]), 0.0) * 2.0 + r.provinces.size() * 100.0
@@ -392,7 +406,7 @@ func spawn_army(realm_id: int, pid: int, troops: int) -> Army:
 	a.province = pid
 	a.skill = rng.randi_range(0, 3)
 	var r := realms[realm_id]
-	a.general = names.person_name(r.culture)
+	dynasty.assign_general(a)
 	a.general_trait = ["cautious", "steady", "steady", "reckless"][rng.randi() % 4]
 	match r.personality:
 		"cautious", "pious":
@@ -598,6 +612,8 @@ func _finish_battle(b: Battle) -> void:
 			a.battle = -1
 			a.troops = b.survivors_of(a.id)
 			a.dug_in = 0.0
+			var captor := b.side_realm[b.winner] if side == loser else -1
+			dynasty.after_battle(a, side == b.winner, b.losses[1 - side], captor)
 			if a.troops < 80:
 				a.dead = true
 				continue
@@ -666,6 +682,9 @@ func _progress_occupations() -> void:
 		else:
 			a.task = "siege"
 			days_needed = (20.0 + 25.0 * p.fort) * defense / clampf(a.troops / 900.0, 0.4, 2.5)
+			var hero := dynasty.person(a.hero)
+			if hero != null:
+				days_needed /= 1.0 + 0.12 * hero.siegecraft
 		p.siege_progress += 1.0 / days_needed
 		if p.siege_progress >= 1.0:
 			_take_province(p, a.realm)
@@ -790,6 +809,9 @@ func _realm_falls(r: Realm, conqueror: Realm) -> void:
 	for other in r.enemies.keys():
 		_end_war(r.id, other)
 	diplomacy.on_realm_gone(r.id)
+	for c: Character in dynasty.people:
+		if c.realm == r.id:
+			c.realm = -1   # the court goes into exile
 	post_news("The %s has fallen to %s." % [old_name, conqueror.name], 2)
 	if r.is_player:
 		r.is_player = false
@@ -801,7 +823,9 @@ func _realm_falls(r: Realm, conqueror: Realm) -> void:
 func _winter_attrition() -> void:
 	for a: Army in armies:
 		if not a.dead and provinces[a.province].owner != a.realm:
-			a.troops = int(a.troops * 0.996)
+			var hero := dynasty.person(a.hero)
+			var care := 1.0 - 0.08 * (hero.logistics if hero != null else 0)
+			a.troops = int(a.troops * (1.0 - 0.004 * maxf(care, 0.2)))
 
 
 # --- Monthly / seasonal ----------------------------------------------------
@@ -816,6 +840,8 @@ func _monthly() -> void:
 			economy.ai_manage(r)
 		_recruit(r, ai_runs)
 	_check_peace()
+	diplomacy.monthly()
+	religion.monthly()
 	var alive_armies: Array[Army] = []
 	for a: Army in armies:
 		if not a.dead:
@@ -939,22 +965,36 @@ func _maybe_spawn_realm() -> void:
 
 # --- War & peace -------------------------------------------------------------
 
-func declare_war(attacker: int, defender: int, quiet := false) -> bool:
+## `holy`: part of a crusade or jihad. `call_allies`: summon both sides' allies
+## and vassals. `joined_for`: the [attacker, defender] war this one supports,
+## so peace in that war also ends this one.
+func declare_war(attacker: int, defender: int, quiet := false, holy := false, call_allies := true, joined_for: Array = []) -> bool:
 	if attacker == defender or at_war(attacker, defender):
 		return false
 	var a := realms[attacker]
 	var d := realms[defender]
 	if not a.alive or not d.alive:
 		return false
+	diplomacy.on_war_declared(attacker, defender, holy)
 	a.enemies[defender] = true
 	d.enemies[attacker] = true
 	a.truces.erase(defender)
 	d.truces.erase(attacker)
-	wars.append({"a": attacker, "b": defender, "start": day, "taken": {}})
+	wars.append({"a": attacker, "b": defender, "start": day, "taken": {}, "holy": holy, "for": joined_for})
 	if not quiet:
 		var importance := 2 if (a.is_player or d.is_player) else 1
 		post_news("%s declares war on %s!" % [a.full_name(), d.full_name()], importance)
+	if call_allies:
+		diplomacy.call_allies(attacker, defender)
 	return true
+
+
+func war_between(x: int, y: int) -> Dictionary:
+	return _war_between(x, y)
+
+
+func send_home(a: Army) -> void:
+	_send_home(a)
 
 
 func _end_war(x: int, y: int) -> void:
@@ -996,6 +1036,11 @@ func make_peace(x: int, y: int) -> void:
 	_end_war(x, y)
 	var importance := 2 if (rx.is_player or ry.is_player) else 1
 	post_news("Peace between %s and %s (%d / %d provinces changed hands)." % [rx.name, ry.name, gained_x, gained_y], importance)
+	# Allies who joined this war make peace too.
+	for other in wars.duplicate():
+		var pair: Array = other.get("for", [])
+		if pair.size() == 2 and ((int(pair[0]) == x and int(pair[1]) == y) or (int(pair[0]) == y and int(pair[1]) == x)):
+			_end_war(int(other["a"]), int(other["b"]))
 
 
 func _war_between(x: int, y: int) -> Dictionary:
@@ -1139,17 +1184,34 @@ func _consider_war(r: Realm) -> void:
 	var hungry := not _has_unclaimed_frontier(r)
 	if rng.randf() > aggression * (0.07 if hungry else 0.015):
 		return
+	if r.liege != -1:
+		return  # vassals fight their liege's wars
 	var mine := realm_strength(r)
 	var best := -1
 	var best_score := 0.0
 	for other in neighbor_realms(r):
 		var o := realms[other]
-		if int(r.truces.get(other, -1)) > day:
+		if int(r.truces.get(other, -1)) > day or o.liege == r.id or diplomacy.has_treaty("vassal", other, r.id):
 			continue
-		var ratio := mine / maxf(realm_strength(o), 1.0)
-		if ratio < 1.25:
+		var pact := diplomacy.has_treaty("nap", r.id, other) or diplomacy.has_treaty("alliance", r.id, other) \
+			or diplomacy.has_treaty("defensive", r.id, other)
+		if pact and not ((r.personality == "ambitious" or r.personality == "cruel") and rng.randf() < 0.15):
 			continue
-		var score := ratio + rng.randf() * 0.5
+		# Their friends count against us.
+		var theirs := realm_strength(o)
+		for ally in diplomacy.allies_of(other, ["alliance", "defensive"]):
+			if ally != r.id:
+				theirs += realm_strength(realms[ally]) * 0.5
+		var ratio := mine / maxf(theirs, 1.0)
+		var feeling := diplomacy.opinion(r.id, other)
+		var needed := 1.25 if feeling > -40.0 else 1.0
+		if ratio < needed:
+			continue
+		var score := ratio + rng.randf() * 0.5 - feeling / 100.0
+		if religion.group_of(o.faith) != religion.group_of(r.faith):
+			score += 0.3
+		if o.excommunicated and o.faith == r.faith:
+			score += 0.3
 		if score > best_score:
 			best_score = score
 			best = other
@@ -1180,6 +1242,8 @@ func found_player_realm(pid: int) -> void:
 
 func spectate() -> void:
 	spawn_mode = false
+	if player_realm != -1:
+		realms[player_realm].is_player = false
 	player_realm = -1
 	if speed == 0:
 		speed = 1
@@ -1263,6 +1327,76 @@ func set_stance(army_id: int, value: int) -> void:
 	var a := army_by_id(army_id)
 	if a != null:
 		a.stance = clampi(value, 0, 2)
+
+
+## The ruler takes the field in person: better morale, real danger.
+func lead_army(army_id: int) -> String:
+	var a := army_by_id(army_id)
+	if a == null:
+		return ""
+	var r := realms[a.realm]
+	var ruler := dynasty.person(r.ruler)
+	if ruler == null or ruler.age(day) < Dynasty.ADULT or ruler.prisoner_of != -1:
+		return "Your ruler cannot take the field."
+	for other: Army in armies_of(r.id):
+		if other.hero == ruler.id:
+			dynasty.assign_general(other)
+	a.hero = ruler.id
+	a.general = ruler.name
+	a.skill = maxi(ruler.martial / 2, ruler.tactics)
+	return "%s rides out at the head of the army." % ruler.name
+
+
+## Personal union: `r` passes to the ruler of `into`.
+func annex_realm(r: Realm, into: int, player_follows: bool) -> void:
+	var heir := realms[into]
+	for pid in r.provinces.duplicate():
+		_set_owner(provinces[pid], into)
+	for a: Army in armies:
+		if a.realm == r.id and not a.dead:
+			a.realm = into
+	for other in r.enemies.keys():
+		_end_war(r.id, other)
+	diplomacy.on_realm_gone(r.id)
+	r.alive = false
+	_update_rank(heir)
+	if r.is_player:
+		r.is_player = false
+		if player_follows:
+			heir.is_player = true
+			player_realm = into
+			post_news("Your dynasty lives on: you now rule the %s." % heir.full_name(), 2)
+		else:
+			player_realm = -1
+			speed = 0
+			dynasty_lost.emit("Your line has ended. %s inherits your lands." % heir.name, false)
+	map_changed.emit()
+
+
+## A great family breaks away with the lands it was granted.
+func secede(r: Realm, pids: Array[int], leader: Character, house: String) -> void:
+	var seat := pids[0]
+	var nr := _create_realm(provinces[seat].name, r.culture, seat, leader.personality)
+	for pid in pids:
+		if pid != seat:
+			_set_owner(provinces[pid], nr.id)
+		provinces[pid].fief = ""
+	# The family's own head rules, not the generated one.
+	var generated := dynasty.person(nr.ruler)
+	if generated != null:
+		generated.role = "noble"
+	leader.realm = nr.id
+	leader.role = "family"
+	nr.ruler = leader.id
+	nr.house = house
+	leader.house = house
+	nr.rank = Realm.rank_for_size(nr.provinces.size())
+	nr.manpower = 300.0
+	spawn_army(nr.id, seat, 300 + pids.size() * 250)
+	_update_rank(r)
+	declare_war(nr.id, r.id, true)
+	post_news("Civil war! The %s family breaks away from %s and founds the %s." % [house, r.name, nr.full_name()], 2 if r.is_player else 1)
+	map_changed.emit()
 
 
 func halt_army(army_id: int) -> void:

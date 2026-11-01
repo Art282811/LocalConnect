@@ -11,6 +11,9 @@ signal rise_again_pressed
 signal realm_pressed
 signal battle_alert_pressed
 signal map_mode_pressed
+signal dynasty_pressed
+signal continue_pressed
+signal event_closed
 
 const SPEEDS := [0.0, 0.25, 1.0, 2.0, 4.0]
 
@@ -25,6 +28,14 @@ var resource_text: RichTextLabel
 var realm_button: Button
 var battle_button: Button
 var map_mode_button: Button
+var dynasty_button: Button
+var over_title: Label
+var over_body: Label
+var over_continue: Button
+var event_panel: PanelContainer
+var event_title: Label
+var event_body: RichTextLabel
+var event_options: VBoxContainer
 var realm_label: Label
 var speed_buttons: Array[Button] = []
 var steward_button: Button
@@ -52,6 +63,7 @@ func _ready() -> void:
 	_build_spawn(root)
 	_build_log(root)
 	_build_game_over(root)
+	_build_event(root)
 
 
 func _make_theme() -> Theme:
@@ -139,8 +151,11 @@ func _build_top_bar(root: Control) -> void:
 	realm_button = _button("Realm", row)
 	realm_button.pressed.connect(func() -> void: realm_pressed.emit())
 	realm_button.visible = false
+	dynasty_button = _button("Dynasty", row)
+	dynasty_button.pressed.connect(func() -> void: dynasty_pressed.emit())
+	dynasty_button.visible = false
 
-	steward_button = _button("Steward", row)
+	steward_button = _button("Auto", row)
 	steward_button.toggle_mode = true
 	steward_button.tooltip_text = "Let the AI run your realm's wars and armies"
 	steward_button.toggled.connect(func(on: bool) -> void: steward_toggled.emit(on))
@@ -148,7 +163,7 @@ func _build_top_bar(root: Control) -> void:
 	map_mode_button = _button("Map: Realms", row)
 	map_mode_button.pressed.connect(func() -> void: map_mode_pressed.emit())
 
-	var log_btn := _button("Chronicle", row)
+	var log_btn := _button("Log", row)
 	log_btn.pressed.connect(_toggle_log)
 
 	resource_panel = PanelContainer.new()
@@ -268,20 +283,77 @@ func _build_game_over(root: Control) -> void:
 	root.add_child(over_panel)
 	var col := VBoxContainer.new()
 	over_panel.add_child(col)
-	var title := Label.new()
-	title.text = "Your realm has fallen"
-	title.add_theme_font_size_override("font_size", 28)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(title)
-	var body := Label.new()
-	body.text = "The world goes on without you."
-	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(body)
+	over_title = Label.new()
+	over_title.text = "Your realm has fallen"
+	over_title.add_theme_font_size_override("font_size", 28)
+	over_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(over_title)
+	over_body = Label.new()
+	over_body.text = "The world goes on without you."
+	over_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	over_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	over_body.custom_minimum_size.x = 460
+	col.add_child(over_body)
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_child(row)
+	over_continue = _button("Play on as the new house", row)
+	over_continue.pressed.connect(_on_continue)
+	over_continue.visible = false
 	_button("Rise again", row).pressed.connect(_on_rise_again)
 	_button("Keep watching", row).pressed.connect(_on_keep_watching)
+
+
+func _on_continue() -> void:
+	over_panel.visible = false
+	continue_pressed.emit()
+
+
+func _build_event(root: Control) -> void:
+	event_panel = PanelContainer.new()
+	event_panel.set_anchors_preset(Control.PRESET_CENTER)
+	event_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	event_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	event_panel.visible = false
+	root.add_child(event_panel)
+	var col := VBoxContainer.new()
+	col.custom_minimum_size.x = 480
+	event_panel.add_child(col)
+	event_title = Label.new()
+	event_title.add_theme_font_size_override("font_size", 26)
+	event_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(event_title)
+	event_body = RichTextLabel.new()
+	event_body.bbcode_enabled = true
+	event_body.fit_content = true
+	event_body.scroll_active = false
+	col.add_child(event_body)
+	event_options = VBoxContainer.new()
+	col.add_child(event_options)
+
+
+## options: Array of [label: String, callback: Callable]
+func show_event(title: String, text: String, options: Array) -> void:
+	event_title.text = title
+	event_body.text = text
+	for c in event_options.get_children():
+		event_options.remove_child(c)
+		c.queue_free()
+	for opt in options:
+		var b := _button(str(opt[0]), event_options)
+		b.pressed.connect(_on_event_option.bind(opt[1]))
+	event_panel.visible = true
+	event_panel.reset_size()
+
+
+func _on_event_option(cb: Callable) -> void:
+	event_panel.visible = false
+	cb.call()
+	event_closed.emit()
+
+
+func is_event_open() -> bool:
+	return event_panel.visible
 
 
 func _on_rise_again() -> void:
@@ -315,6 +387,7 @@ func set_speed(speed: float) -> void:
 func set_resources(bbcode: String) -> void:
 	resource_panel.visible = bbcode != ""
 	realm_button.visible = bbcode != ""
+	dynasty_button.visible = bbcode != ""
 	if bbcode != "":
 		resource_text.text = bbcode
 		resource_panel.reset_size()
@@ -337,8 +410,12 @@ func show_spawn(on: bool) -> void:
 	spawn_panel.visible = on
 
 
-func show_game_over() -> void:
+func show_game_over(title: String = "Your realm has fallen", text: String = "The world goes on without you.", can_continue := false) -> void:
+	over_title.text = title
+	over_body.text = text
+	over_continue.visible = can_continue
 	over_panel.visible = true
+	over_panel.reset_size()
 
 
 func add_news(text: String) -> void:

@@ -35,6 +35,7 @@ var mission_until: int = -1    # missionaries at work until this day
 var mission_faith: String = ""
 var holy_site: String = ""     # e.g. "Jerusalem"
 var sacred: Array = []         # faiths that hold the holy site sacred
+var fief: String = ""          # noble family it is granted to
 
 
 func building_level(id: String) -> int:

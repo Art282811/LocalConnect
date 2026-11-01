@@ -16,10 +16,18 @@ func reserve(n: String) -> void:
 	_used[n] = true
 
 
-func person_name(culture: String) -> String:
+func person_name(culture: String, female := false) -> String:
 	var c: Dictionary = _data.get(culture, _data.get("latin", {}))
-	var given: Array = c.get("given", ["Aldric"])
+	var given: Array = c.get("given_f" if female else "given", ["Aldric"])
 	return str(given[_rng.randi() % given.size()])
+
+
+## A family name like "of Valtorre" — not reserved, so houses may echo places.
+func house_name(culture: String) -> String:
+	var c: Dictionary = _data.get(culture, _data.get("latin", {}))
+	var starts: Array = c.get("start", ["Nova"])
+	var ends: Array = c.get("end", ["ria"])
+	return str(starts[_rng.randi() % starts.size()]) + str(ends[_rng.randi() % ends.size()])
 
 
 func place_name(culture: String) -> String:
