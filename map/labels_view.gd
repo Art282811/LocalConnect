@@ -36,11 +36,14 @@ func _draw() -> void:
 	var detail := zoom >= DETAIL_ZOOM
 	var icon_scale := 1.0 / clampf(zoom, 0.55, 1.8)
 
-	if detail:
+	if detail and zoom < 4.0:
 		_draw_roads()
 
+	var close_battle := zoom >= BattleView.BLOCK_ZOOM
 	for p: Province in world.provinces:
 		var is_cap := p.owner != -1 and world.realms[p.owner].capital == p.id
+		if close_battle and world.battle_at(p.id) != null:
+			continue  # the battle view draws this village up close
 		if region:
 			if detail:
 				_draw_villages(p)
@@ -48,8 +51,8 @@ func _draw() -> void:
 		elif is_cap and world.realms[p.owner].provinces.size() >= 3:
 			draw_settlement(self, p.center, "castle", 2, icon_scale * 0.8, true)
 
-	if region:
-		var fs := int(clampf(13.0 / zoom, 8.0, 40.0))
+	if region and zoom < 4.0:
+		var fs := int(clampf(13.0 / zoom, 4.0, 40.0))
 		for p: Province in world.provinces:
 			_text_centered(p.name, p.center + Vector2(0, 22.0 * icon_scale + fs * 0.6), fs, INK, PAPER, 3)
 

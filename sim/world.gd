@@ -8,6 +8,8 @@ signal news_posted(text: String, importance: int)
 signal map_changed
 signal battle_fought(pos: Vector2, troops: int)
 signal player_lost
+signal battle_started(b: Battle)
+signal battle_ended(b: Battle)
 
 # --- Tuning knobs ---------------------------------------------------------
 const DAY_SECONDS := 1.5          # real seconds per in-game day at 1x
@@ -35,9 +37,10 @@ var rng := RandomNumberGenerator.new()
 var provinces: Array[Province] = []
 var realms: Array[Realm] = []
 var armies: Array[Army] = []
+var battles: Array[Battle] = []
 var wars: Array[Dictionary] = []  # {a, b, start, taken: {realm_id: provinces taken}}
 var day: int = 0
-var speed: int = 0
+var speed: float = 0.0
 var player_realm: int = -1
 var auto_rule := false            # "steward": AI also runs the player's realm
 var spawn_mode := true
@@ -53,6 +56,7 @@ var names: NameGen
 var economy: Economy
 var _accum := 0.0
 var _next_army_id := 0
+var _next_battle_id := 0
 var _targeted := {}               # province id -> army id heading there
 
 
@@ -185,6 +189,7 @@ func _set_owner(p: Province, realm_id: int) -> void:
 func advance(delta: float) -> void:
 	if speed <= 0 or spawn_mode:
 		return
+	_update_battles(delta * speed / DAY_SECONDS * Battle.SECONDS_PER_DAY)
 	_accum += delta * speed
 	var ticks := 0
 	while _accum >= DAY_SECONDS and ticks < MAX_TICKS_PER_FRAME:
@@ -386,6 +391,16 @@ func spawn_army(realm_id: int, pid: int, troops: int) -> Army:
 	a.troops = troops
 	a.province = pid
 	a.skill = rng.randi_range(0, 3)
+	var r := realms[realm_id]
+	a.general = names.person_name(r.culture)
+	a.general_trait = ["cautious", "steady", "steady", "reckless"][rng.randi() % 4]
+	match r.personality:
+		"cautious", "pious":
+			a.stance = 0
+		"ambitious", "cruel":
+			a.stance = 2
+		_:
+			a.stance = 1
 	armies.append(a)
 	return a
 
@@ -393,8 +408,13 @@ func spawn_army(realm_id: int, pid: int, troops: int) -> Army:
 func _move_armies() -> void:
 	var winter := season() == 3
 	for a: Army in armies:
-		if a.dead or a.path.is_empty():
+		if a.dead or a.battle != -1:
 			continue
+		if a.path.is_empty():
+			if a.order == "join":
+				_try_join(a)
+			continue
+		a.dug_in = 0.0
 		var next: int = a.path[0]
 		if not can_enter(a.realm, next):
 			_stop(a)
@@ -403,10 +423,15 @@ func _move_armies() -> void:
 		if a.progress >= 1.0:
 			a.progress = 0.0
 			a.path.pop_front()
+			a.came_from = a.province
 			a.province = next
 			if a.path.is_empty():
-				a.manual = false
 				_targeted.erase(next)
+				if a.order == "join":
+					_try_join(a)
+				elif a.order != "hold" and a.order != "raid":
+					a.manual = false
+					a.order = ""
 
 
 func _stop(a: Army) -> void:
@@ -414,70 +439,194 @@ func _stop(a: Army) -> void:
 	a.progress = 0.0
 	a.manual = false
 	a.task = "idle"
+	a.order = ""
+	a.join_target = -1
 
 
+func _try_join(a: Army) -> void:
+	var other := army_by_id(a.join_target)
+	if other == null or other.realm != a.realm or other == a:
+		_stop(a)
+		return
+	if other.province == a.province and other.battle == -1:
+		other.quality = (other.troops * other.quality + a.troops * a.quality) / float(other.troops + a.troops)
+		other.troops += a.troops
+		if a.skill > other.skill:
+			other.skill = a.skill
+			other.general = a.general
+			other.general_trait = a.general_trait
+		a.dead = true
+		if realms[a.realm].is_player:
+			post_news("Your armies join under Lord %s." % other.general, 1)
+		return
+	if a.path.is_empty():
+		var path := find_path(a.province, a.realm, 400, _is_target.bind(other.province))
+		if path.is_empty():
+			_stop(a)
+		else:
+			a.path = path
+
+
+## Hostile armies in the same province start (or join) a battle there.
 func _resolve_battles() -> void:
 	var by_prov := {}
 	for a: Army in armies:
-		if a.dead:
+		# Beaten armies falling back don't turn round and start another fight.
+		if a.dead or (a.task == "retreat" and not a.path.is_empty()):
 			continue
 		if not by_prov.has(a.province):
 			by_prov[a.province] = []
 		by_prov[a.province].append(a)
 	for pid in by_prov:
 		var here: Array = by_prov[pid]
+		var b := battle_at(pid)
+		if b != null:
+			for a: Army in here:
+				if a.battle == -1 and a.path.is_empty():
+					var side := b.side_realm.find(a.realm)
+					if side != -1:
+						b.add_army(a, side)
+			continue
 		if here.size() < 2:
 			continue
 		here.sort_custom(func(x: Army, y: Army) -> bool: return x.troops > y.troops)
-		for i in here.size():
-			var a: Army = here[i]
-			if a.dead:
+		var first: Army = null
+		var second: Army = null
+		for a: Army in here:
+			if a.battle != -1:
 				continue
-			for j in range(i + 1, here.size()):
-				var b: Army = here[j]
-				if not b.dead and at_war(a.realm, b.realm):
-					_battle(a, b, provinces[pid])
-					break
+			if first == null:
+				first = a
+			elif second == null and at_war(first.realm, a.realm):
+				second = a
+		if first == null or second == null:
+			continue
+		var side0: Array[Army] = []
+		var side1: Array[Army] = []
+		for a: Army in here:
+			if a.battle != -1:
+				continue
+			if a.realm == first.realm:
+				side0.append(a)
+			elif a.realm == second.realm:
+				side1.append(a)
+		# The side standing on its own land is defending; the other marched in.
+		var attacking := 1 if provinces[pid].owner == first.realm else 0
+		_start_battle(pid, side0, side1, attacking, false)
 
 
-func _battle(a: Army, b: Army, p: Province) -> void:
-	var defense: float = TERRAIN[p.terrain]["defense"]
-	var sa := a.troops * a.quality * rng.randf_range(0.75, 1.25) * (1.0 + a.skill * 0.08)
-	var sb := b.troops * b.quality * rng.randf_range(0.75, 1.25) * (1.0 + b.skill * 0.08)
-	if p.owner == b.realm:
-		sb *= defense
-	elif p.owner == a.realm:
-		sa *= defense
-	var winner := a if sa >= sb else b
-	var loser := b if winner == a else a
-	var ratio := minf(sa, sb) / maxf(maxf(sa, sb), 1.0)
-	var winner_loss := int(winner.troops * 0.3 * ratio)
-	var loser_loss := int(loser.troops * (0.35 + 0.4 * (1.0 - ratio)))
-	var total := a.troops + b.troops
-	winner.troops = maxi(winner.troops - winner_loss, 1)
-	loser.troops -= loser_loss
-	if winner.skill < 5 and rng.randf() < 0.3:
-		winner.skill += 1
+func battle_at(pid: int) -> Battle:
+	for b: Battle in battles:
+		if b.province == pid and not b.over:
+			return b
+	return null
 
-	var wr := realms[winner.realm]
-	var lr := realms[loser.realm]
+
+func battle_by_id(battle_id: int) -> Battle:
+	for b: Battle in battles:
+		if b.id == battle_id:
+			return b
+	return null
+
+
+func _start_battle(pid: int, side0: Array[Army], side1: Array[Army], attacking: int, is_assault: bool) -> Battle:
+	var b := Battle.new()
+	b.setup(self, _next_battle_id, pid, side0, side1, attacking, is_assault)
+	_next_battle_id += 1
+	battles.append(b)
+	for a: Army in side0 + side1:
+		a.path.clear()
+		a.progress = 0.0
+	var r0 := realms[b.side_realm[0]]
+	var r1 := realms[b.side_realm[1]]
+	if r0.is_player or r1.is_player:
+		var mine := 0 if r0.is_player else 1
+		var verb := "storms the walls of" if is_assault else "gives battle at"
+		post_news("%s %s %s!" % ["Lord " + b.general[mine] if b.general[mine] != "" else "Your army", verb, provinces[pid].name], 2)
+	battle_started.emit(b)
+	return b
+
+
+## Besiegers can storm the walls instead of starving the town out.
+func start_assault(army_id: int) -> bool:
+	var a := army_by_id(army_id)
+	if a == null or a.battle != -1 or not a.path.is_empty():
+		return false
+	var p := provinces[a.province]
+	if p.owner == -1 or not at_war(a.realm, p.owner) or _hostile_army_in(a.realm, p.id):
+		return false
+	var side0: Array[Army] = []
+	for other: Army in armies:
+		if not other.dead and other.realm == a.realm and other.province == p.id and other.battle == -1 and other.path.is_empty():
+			side0.append(other)
+	var side1: Array[Army] = []
+	_start_battle(p.id, side0, side1, 0, true)
+	return true
+
+
+func garrison_size(p: Province) -> float:
+	return clampf(p.pop * 0.03 + p.fort * 120.0, 60.0, 900.0)
+
+
+func _update_battles(dt: float) -> void:
+	for b: Battle in battles.duplicate():
+		b.update(dt)
+		if b.over:
+			_finish_battle(b)
+
+
+func resolve_battle_now(battle_id: int) -> void:
+	var b := battle_by_id(battle_id)
+	if b != null and not b.over:
+		b.resolve_now()
+		_finish_battle(b)
+
+
+func _finish_battle(b: Battle) -> void:
+	battles.erase(b)
+	var p := provinces[b.province]
+	var loser := 1 - b.winner
+	var wr := realms[b.side_realm[b.winner]]
+	var lr := realms[b.side_realm[loser]]
+	var total := 0
+	for side in 2:
+		for aid in b.armies[side]:
+			var a := army_by_id(aid)
+			if a == null:
+				continue
+			total += a.troops
+			a.battle = -1
+			a.troops = b.survivors_of(a.id)
+			a.dug_in = 0.0
+			if a.troops < 80:
+				a.dead = true
+				continue
+			if side == loser:
+				_retreat(a)
+			elif a.skill < 5 and rng.randf() < 0.3:
+				a.skill += 1
+	var winner_name := b.general[b.winner]
+	var who := ("Lord %s of %s" % [winner_name, wr.name]) if winner_name != "" else ("The garrison of %s" % p.name)
+	var verb := "holds" if b.winner != b.attacker else ("storms" if b.assault else "wins at")
 	var importance := 2 if (wr.is_player or lr.is_player) else (1 if total >= 2500 else 0)
-	post_news("Battle of %s: %s defeats %s (%d vs %d dead)." % [p.name, wr.name, lr.name, winner_loss, loser_loss], importance)
-	battle_fought.emit(p.center, total)
+	post_news("%s %s %s: %d enemy dead, %d lost." % [who, verb, p.name, int(b.losses[loser]), int(b.losses[b.winner])], importance)
+	battle_fought.emit(b.center, total)
+	if b.assault and b.winner == b.attacker and p.owner == lr.id:
+		_take_province(p, wr.id)
+	battle_ended.emit(b)
 
-	if loser.troops < 80:
-		loser.dead = true
+
+func _retreat(a: Army) -> void:
+	_stop(a)
+	if provinces[a.province].siege_army == a.id:
+		provinces[a.province].siege_army = -1
+	var back := find_path(a.province, a.realm, 200, _is_own_land.bind(a.realm))
+	if back.is_empty():
+		a.dead = true
+		post_news("The army of %s is scattered." % realms[a.realm].name, 1 if realms[a.realm].is_player else 0)
 		return
-	_stop(loser)
-	var retreat := find_path(loser.province, loser.realm, 200, _is_own_land.bind(loser.realm))
-	if retreat.is_empty():
-		loser.dead = true
-		post_news("The army of %s is scattered." % lr.name, 1 if lr.is_player else 0)
-		return
-	loser.path = retreat
-	loser.task = "retreat"
-	if provinces[loser.province].siege_army == loser.id:
-		provinces[loser.province].siege_army = -1
+	a.path = back
+	a.task = "retreat"
 
 
 ## Armies standing on unclaimed or enemy land slowly take it over.
@@ -489,9 +638,15 @@ func _progress_occupations() -> void:
 				p.siege_army = -1
 				p.siege_progress = 0.0
 	for a: Army in armies:
-		if a.dead or not a.path.is_empty():
+		if a.dead or not a.path.is_empty() or a.battle != -1:
+			continue
+		if a.order == "hold":
+			a.dug_in += 1.0
 			continue
 		var p := provinces[a.province]
+		if a.order == "raid":
+			_raid(a, p)
+			continue
 		if p.owner == a.realm:
 			continue
 		if p.owner != -1 and not at_war(a.realm, p.owner):
@@ -515,6 +670,31 @@ func _progress_occupations() -> void:
 		if p.siege_progress >= 1.0:
 			_take_province(p, a.realm)
 			a.task = "idle"
+
+
+## Raiders burn and loot instead of besieging, then head home.
+func _raid(a: Army, p: Province) -> void:
+	if p.owner == -1 or not at_war(a.realm, p.owner) or _hostile_army_in(a.realm, p.id):
+		if p.owner == -1 or not at_war(a.realm, p.owner):
+			a.order = ""
+			a.manual = false
+		return
+	a.task = "raid"
+	var victim := realms[p.owner]
+	var loot := p.pop * 0.0015
+	victim.res["gold"] = float(victim.res["gold"]) - loot * 0.5
+	realms[a.realm].res["gold"] = float(realms[a.realm].res["gold"]) + loot
+	p.pop *= 0.998
+	p.happiness = maxf(p.happiness - 0.4, 0.0)
+	a.raid_days += 1
+	if a.raid_days >= 20:
+		var who := realms[a.realm]
+		var importance := 2 if (who.is_player or victim.is_player) else 0
+		post_news("Lord %s of %s raids %s and carries off the harvest." % [a.general, who.name, p.name], importance)
+		a.raid_days = 0
+		a.order = ""
+		a.manual = false
+		a.task = "idle"
 
 
 func _hostile_army_in(realm_id: int, pid: int) -> bool:
@@ -874,11 +1054,17 @@ func _ai_think(r: Realm) -> void:
 	if r.enemies.is_empty():
 		_consider_war(r)
 	for a: Army in armies_of(r.id):
-		if a.manual or not a.path.is_empty():
+		if a.manual or not a.path.is_empty() or a.battle != -1 or a.order != "":
 			continue
 		if a.task == "claim" or a.task == "siege":
 			var p := provinces[a.province]
 			if p.owner == -1 or at_war(r.id, p.owner):
+				# Storm the walls if the siege drags and we clearly outnumber the garrison.
+				if p.owner != -1 and a.task == "siege":
+					var g := garrison_size(p)
+					var bold := a.general_trait == "reckless" or a.stance == 2
+					if (bold and p.siege_progress > 0.3 and a.troops > g * 2.5) or (p.siege_progress > 0.6 and a.troops > g * 1.8):
+						start_assault(a.id)
 				continue  # still busy taking this province
 		_assign_task(r, a)
 
@@ -998,10 +1184,17 @@ func spectate() -> void:
 		speed = 1
 
 
-func order_army(army_id: int, target: int) -> int:
-	## Returns the march length in days, or -1 if there is no route.
+## Take: march there and claim or besiege it. Returns days, or -1 if no route.
+func order_army(army_id: int, target: int, kind: String = "take") -> int:
 	var a := army_by_id(army_id)
-	if a == null or a.province == target:
+	if a == null or a.battle != -1:
+		return -1
+	if a.province == target:
+		if kind == "raid" or kind == "hold":
+			_stop(a)
+			a.order = kind
+			a.manual = true
+			return 0
 		return -1
 	var path := find_path(a.province, a.realm, 500, _is_target.bind(target))
 	if path.is_empty():
@@ -1013,14 +1206,65 @@ func order_army(army_id: int, target: int) -> int:
 		prev = pid
 	if provinces[a.province].siege_army == a.id:
 		provinces[a.province].siege_army = -1
+	_stop(a)
 	a.path = path
-	a.progress = 0.0
 	a.manual = true
 	a.task = "order"
+	a.order = kind
 	return days
+
+
+## Hold: stay put and dig in. After a few days the army has stakes out.
+func hold_army(army_id: int) -> void:
+	var a := army_by_id(army_id)
+	if a == null or a.battle != -1:
+		return
+	_stop(a)
+	a.order = "hold"
+	a.manual = true
+	a.task = "hold"
+
+
+## Retreat to the strongest of our own fortresses within reach.
+func retreat_army(army_id: int) -> bool:
+	var a := army_by_id(army_id)
+	if a == null or a.battle != -1:
+		return false
+	var best := -1
+	var best_score := -INF
+	for pid: int in realms[a.realm].provinces:
+		var score := provinces[pid].fort * 10.0 - provinces[a.province].center.distance_to(provinces[pid].center) / 100.0
+		if score > best_score:
+			best_score = score
+			best = pid
+	if best == -1:
+		return false
+	if best == a.province:
+		hold_army(army_id)
+		return true
+	return order_army(army_id, best, "retreat") >= 0
+
+
+func join_army(army_id: int, other_id: int) -> bool:
+	var a := army_by_id(army_id)
+	var other := army_by_id(other_id)
+	if a == null or other == null or a == other or a.realm != other.realm or a.battle != -1:
+		return false
+	_stop(a)
+	a.order = "join"
+	a.join_target = other_id
+	a.manual = true
+	_try_join(a)
+	return true
+
+
+func set_stance(army_id: int, value: int) -> void:
+	var a := army_by_id(army_id)
+	if a != null:
+		a.stance = clampi(value, 0, 2)
 
 
 func halt_army(army_id: int) -> void:
 	var a := army_by_id(army_id)
-	if a != null:
+	if a != null and a.battle == -1:
 		_stop(a)

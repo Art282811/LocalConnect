@@ -81,6 +81,8 @@ func _draw_armies(s: float) -> void:
 	for a: Army in world.armies:
 		if a.dead:
 			continue
+		if a.battle != -1 and zoom >= BattleView.BLOCK_ZOOM:
+			continue
 		var pos := world.army_position(a)
 		var key := Vector2i(int(pos.x / 8.0), int(pos.y / 8.0))
 		var n: int = stack.get(key, 0)

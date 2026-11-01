@@ -7,7 +7,7 @@ extends Camera2D
 signal tapped(world_pos: Vector2, screen_pos: Vector2)
 signal zoom_changed(z: float)
 
-const MAX_ZOOM := 3.5
+const MAX_ZOOM := 10.0  # close enough to watch single soldiers
 const TAP_SLOP := 10.0
 
 var map_size := Vector2(2000, 2000)

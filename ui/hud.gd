@@ -3,12 +3,15 @@ extends CanvasLayer
 ## Mobile-first HUD built in code: top bar (date, realm, speed), news feed,
 ## info panel with action buttons, spawn prompt, chronicle and game-over panels.
 
-signal speed_chosen(speed: int)
+signal speed_chosen(speed: float)
 signal steward_toggled(on: bool)
 signal spectate_pressed
 signal new_world_pressed
 signal rise_again_pressed
 signal realm_pressed
+signal battle_alert_pressed
+
+const SPEEDS := [0.0, 0.25, 1.0, 2.0, 4.0]
 
 const INK := Color(0.24, 0.16, 0.09)
 const PARCHMENT := Color(0.94, 0.89, 0.76, 0.95)
@@ -19,6 +22,7 @@ var date_label: Label
 var resource_panel: PanelContainer
 var resource_text: RichTextLabel
 var realm_button: Button
+var battle_button: Button
 var realm_label: Label
 var speed_buttons: Array[Button] = []
 var steward_button: Button
@@ -116,12 +120,17 @@ func _build_top_bar(root: Control) -> void:
 	row.add_child(realm_label)
 
 	var group := ButtonGroup.new()
-	var labels := ["II", "1x", "2x", "4x"]
+	battle_button = _button("Battle!", row)
+	battle_button.add_theme_color_override("font_color", Color(0.6, 0.08, 0.05))
+	battle_button.pressed.connect(func() -> void: battle_alert_pressed.emit())
+	battle_button.visible = false
+
+	var labels := ["II", "¼", "1x", "2x", "4x"]
 	for i in labels.size():
 		var b := _button(labels[i], row)
 		b.toggle_mode = true
 		b.button_group = group
-		var speed: int = [0, 1, 2, 4][i]
+		var speed: float = SPEEDS[i]
 		b.pressed.connect(func() -> void: speed_chosen.emit(speed))
 		speed_buttons.append(b)
 
@@ -291,8 +300,8 @@ func set_realm_text(text: String) -> void:
 	realm_label.text = text
 
 
-func set_speed(speed: int) -> void:
-	var idx := [0, 1, 2, 4].find(speed)
+func set_speed(speed: float) -> void:
+	var idx := SPEEDS.find(speed)
 	if idx >= 0:
 		speed_buttons[idx].set_pressed_no_signal(true)
 
@@ -304,6 +313,11 @@ func set_resources(bbcode: String) -> void:
 	if bbcode != "":
 		resource_text.text = bbcode
 		resource_panel.reset_size()
+
+
+func set_battle_alert(text: String) -> void:
+	battle_button.visible = text != ""
+	battle_button.text = text
 
 
 func set_steward(on: bool) -> void:

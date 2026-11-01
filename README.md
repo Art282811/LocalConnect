@@ -4,7 +4,7 @@ A real-time medieval kingdom builder for phones: found a tiny realm anywhere on 
 map of Europe and the Near East, grow it into an empire, and keep it alive through
 war, faith, diplomacy and family politics.
 
-This repo contains **Layer 1 — Living map** and **Layer 2 — Your realm** from the
+This repo contains **Layers 1–3** (living map, your realm, battles) from the
 design document (`docs/game-design-document.pdf`).
 
 ## Running it
@@ -14,7 +14,7 @@ design document (`docs/game-design-document.pdf`).
 3. Press **F5** (Run project).
 
 Desktop controls: drag to pan, mouse wheel to zoom, click to select.
-Keys: `Space` pause/resume, `1` / `2` / `3` speed.
+Keys: `Space` pause/resume, `0` slow-motion (¼), `1` / `2` / `3` speed.
 Phone/tablet: one finger pans, two fingers pinch-zoom, tap to select.
 
 ## What Layer 1 does
@@ -66,13 +66,44 @@ Phone/tablet: one finger pans, two fingers pinch-zoom, tap to select.
 - **AI realms play by the same rules:** they set taxes, build, hold festivals,
   starve, go broke and revolt just like you.
 
+## What Layer 3 adds
+
+- **Battles on the real map.** When hostile armies meet, the fight happens in
+  that province, on its own terrain, while the rest of the world keeps moving.
+  Several battles can rage at once.
+- **One camera, three levels.** Far out: a crossed-swords marker with a strength
+  bar. Zoom in: regiment blocks with counts and morale bars. Zoom right in: tiny
+  stick-figure soldiers in bucket helms and tabards, horses, flying arrows,
+  the fallen, a turning windmill.
+- **Regiments** (spearmen, men-at-arms, archers, knights, horse archers) built
+  from each army's size, quality and culture.
+- **Terrain matters:** forests hide units (ambush shock) and slow cavalry; hills
+  give archers range and defence; rivers slow and expose troops except at the
+  bridge; the village gives defenders cover and breaks charges.
+- **Flanks, charges and morale:** side and rear attacks hurt more and shake
+  morale; cavalry charges hit hard but break on spears and stakes; units rout,
+  may rally once, and panic spreads.
+- **Generals fight on their own.** Each army has a named lord with a fighting
+  style (cautious / steady / reckless) and a stance that decides when to pull
+  out. Messengers report the outcome in the news feed.
+- **Your orders** (tap your army): **take** (tap a province), **Hold here**
+  (digs in; stakes after 4 days), **Raid…**, **Retreat**, **Join…**, stance.
+- **Take command** of any battle you're in: tap a regiment, tap ground to move,
+  tap an enemy to attack; set formation (line / wedge / square) and stance
+  (hold / charge / skirmish). Or **Auto-resolve**, or **Withdraw**.
+  Taking command drops the game to ¼ speed.
+- **Sieges with walls:** defenders behind walls are hard to hurt; attackers must
+  batter the gate (much faster once the siege has built rams). Besiegers can
+  **Assault walls** against the town garrison; the AI does too.
+- A **Battle!** button in the top bar jumps to any fight you're in.
+
 ## Layout
 
 | Folder | What's in it |
 | --- | --- |
 | `data/` | `world.json` (coastlines, seas, terrain zones, rivers, cultures), `realms.json` (starting realms), `buildings.json` (costs, limits, effects), `names.json` (name syllables). Edit these to tweak content. |
-| `sim/` | The simulation, separate from visuals: `world.gd` (clock, AI, wars, sieges, rebellions), `economy.gd` (resources, buildings, people, taxes, happiness, recruiting), `map_builder.gd` (provinces from the outline), `province.gd`, `realm.gd`, `army.gd`, `names.gd`. |
-| `map/` | `map_view.gd` (parchment map), `labels_view.gd` (names, settlements, roads), `overlay_view.gd` (armies, sieges, battle smoke), `camera_rig.gd` (pan/zoom/pinch). |
+| `sim/` | The simulation, separate from visuals: `world.gd` (clock, AI, wars, sieges, rebellions), `economy.gd` (resources, buildings, people, taxes, happiness, recruiting), `battle.gd` + `regiment.gd` (tactical battles), `map_builder.gd` (provinces from the outline), `province.gd`, `realm.gd`, `army.gd`, `names.gd`. |
+| `map/` | `map_view.gd` (parchment map), `labels_view.gd` (names, settlements, roads), `overlay_view.gd` (armies, sieges, battle smoke), `battle_view.gd` (battle blocks and soldiers), `camera_rig.gd` (pan/zoom/pinch). |
 | `ui/` | `hud.gd` — top bar, news feed, info panel, spawn prompt, chronicle. |
 | `main.gd` | Wires it together and handles taps/selection. |
 
@@ -89,7 +120,7 @@ its map data. iOS builds need a Mac with Xcode.
 
 1. ~~Layer 1 — Living map~~
 2. ~~Layer 2 — Your realm~~
-3. Layer 3 — Battles on the real terrain, regiments, generals, sieges with walls
+3. ~~Layer 3 — Battles~~
 4. Layer 4 — Diplomacy, religion, crusades
 5. Layer 5 — Dynasty & drama
 6. Layer 6 — Polish & phone builds

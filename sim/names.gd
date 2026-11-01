@@ -16,6 +16,12 @@ func reserve(n: String) -> void:
 	_used[n] = true
 
 
+func person_name(culture: String) -> String:
+	var c: Dictionary = _data.get(culture, _data.get("latin", {}))
+	var given: Array = c.get("given", ["Aldric"])
+	return str(given[_rng.randi() % given.size()])
+
+
 func place_name(culture: String) -> String:
 	var c: Dictionary = _data.get(culture, _data.get("latin", {}))
 	var starts: Array = c.get("start", ["Nova"])
