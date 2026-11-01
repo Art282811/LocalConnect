@@ -202,12 +202,52 @@ Phone/tablet: one finger pans, two fingers pinch-zoom, tap to select.
 - **You lose when your dynasty ends or is overthrown.** After a coup or a lost
   election you may **play on as the new house** — the design doc's open question.
 
+## How the AI thinks
+
+Every AI realm keeps a strategic "mind" (`sim/strategy.gd`), re-assessed monthly:
+
+- **Threats:** each neighbour is scored by its strength *plus the allies who would
+  likely fight for it*, how hostile it is, whether it borders us and whether its
+  armies are massing on our border. A realm far stronger than the rest alarms
+  everyone, so **coalitions** form against it.
+- **If to attack:** for every neighbour it estimates its **chance of winning**
+  (both sides' allies weighted by how likely they are to join and whether they
+  can reach the front; targets already fighting someone else or ruled by a child
+  are weaker) and weighs the **value** of the land it could take (people,
+  markets, ports, holy sites, same culture and faith, dynastic claims) against
+  what it could lose. Each personality has its own nerve and appetite; cautious
+  and pious rulers won't break pacts; others will only if the prize is worth the
+  dishonour. Realms with empty land nearby prefer to settle it first.
+- **When:** a chosen war goes through a **preparation** phase: armies merge and
+  muster at a fortified staging province on the border, flanks are secured with
+  non-aggression pacts, the target's enemies are courted as allies. It declares
+  only when ready, never into winter, and drops the plan if the odds worsen.
+  An overwhelmingly stronger realm first demands tribute or vassalage and fights
+  only if refused.
+- **Where:** specific **objective provinces** ranked by value ÷ difficulty (forts,
+  terrain), plus the capital when the target is small enough to finish.
+- **In war:** it hunts invaders it can beat, falls back behind walls from ones it
+  can't, merges detachments into a main army, refuses to march into a stronger
+  enemy army, keeps sieges going and storms walls when the garrison is clearly
+  outmatched.
+- **Peace** is reasoned too: objectives taken, losing, exhausted, starving or
+  broke. AI rulers send *you* peace offers, and accept yours only when it makes
+  sense for them.
+- **Diplomacy with purpose:** alliances with realms that fear the same enemy,
+  encirclement of a planned target, gifts to appease a dangerous neighbour,
+  dropping allies who became a threat. Proposals and calls to arms are judged on
+  strategic value, and demands are accepted only by those who truly can't win.
+- **Intel:** the Diplomacy screen shows what your envoys sense, e.g. *"Their
+  armies are gathering on your border!"*
+
+Tuning knobs are constants at the top of `sim/strategy.gd`.
+
 ## Layout
 
 | Folder | What's in it |
 | --- | --- |
 | `data/` | `world.json` (coastlines, seas, terrain zones, rivers, cultures), `realms.json` (starting realms), `buildings.json` (costs, limits, effects), `religions.json` (faiths, holy sites, relics), `names.json` (name syllables). Edit these to tweak content. |
-| `sim/` | The simulation, separate from visuals: `world.gd` (clock, AI, wars, sieges, rebellions), `economy.gd` (resources, buildings, people, taxes, happiness, recruiting), `battle.gd` + `regiment.gd` (tactical battles), `diplomacy.gd` (opinion, treaties, trade), `religion.gd` (faiths, heads, crusades), `dynasty.gd` + `character.gd` (people, succession, nobles, events), `map_builder.gd` (provinces from the outline), `province.gd`, `realm.gd`, `army.gd`, `names.gd`. |
+| `sim/` | The simulation, separate from visuals: `world.gd` (clock, AI, wars, sieges, rebellions), `economy.gd` (resources, buildings, people, taxes, happiness, recruiting), `battle.gd` + `regiment.gd` (tactical battles), `diplomacy.gd` (opinion, treaties, trade), `religion.gd` (faiths, heads, crusades), `dynasty.gd` + `character.gd` (people, succession, nobles, events), `strategy.gd` (AI strategy), `save_game.gd` (save/load), `map_builder.gd` (provinces from the outline), `province.gd`, `realm.gd`, `army.gd`, `names.gd`. |
 | `map/` | `map_view.gd` (parchment map), `labels_view.gd` (names, settlements, roads), `overlay_view.gd` (armies, sieges, battle smoke), `battle_view.gd` (battle blocks and soldiers), `camera_rig.gd` (pan/zoom/pinch). |
 | `ui/` | `hud.gd` — top bar, news feed, info panel, spawn prompt, chronicle. |
 | `main.gd` | Wires it together and handles taps/selection. |

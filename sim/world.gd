@@ -31,7 +31,6 @@ const TERRAIN := {
 }
 
 const PERSONALITIES := ["ambitious", "cruel", "greedy", "pious", "cautious"]
-const AGGRESSION := {"ambitious": 1.0, "cruel": 0.9, "greedy": 0.7, "pious": 0.45, "cautious": 0.25}
 
 # --- State ----------------------------------------------------------------
 var rng := RandomNumberGenerator.new()
@@ -59,6 +58,7 @@ var economy: Economy
 var diplomacy: Diplomacy
 var religion: Religion
 var dynasty: Dynasty
+var strategy: Strategy
 var _accum := 0.0
 var _next_army_id := 0
 var _next_battle_id := 0
@@ -73,6 +73,7 @@ func setup(seed_value: int) -> void:
 	economy = Economy.new(self, _load_json("res://data/buildings.json"))
 	diplomacy = Diplomacy.new(self)
 	dynasty = Dynasty.new(self)
+	strategy = Strategy.new(self)
 	var religion_data := _load_json("res://data/religions.json")
 	religion = Religion.new(self, religion_data)
 
@@ -841,7 +842,7 @@ func _monthly() -> void:
 		if ai_runs:
 			economy.ai_manage(r)
 		_recruit(r, ai_runs)
-	_check_peace()
+	strategy.monthly()   # assessments, war plans, diplomacy and peace
 	diplomacy.monthly()
 	religion.monthly()
 	var alive_armies: Array[Army] = []
@@ -1052,24 +1053,6 @@ func _war_between(x: int, y: int) -> Dictionary:
 	return {}
 
 
-func _check_peace() -> void:
-	for w in wars.duplicate():
-		var x: int = w["a"]
-		var y: int = w["b"]
-		var rx := realms[x]
-		var ry := realms[y]
-		if (rx.is_player or ry.is_player) and not auto_rule:
-			continue  # the player decides their own peace
-		var length := day - int(w["start"])
-		if length < 90:
-			continue
-		var chance := clampf((length - 90) / 900.0, 0.0, 0.45)
-		if armies_of(x).is_empty() or armies_of(y).is_empty():
-			chance += 0.25
-		if rng.randf() < chance:
-			make_peace(x, y)
-
-
 ## Player asks for peace. The AI accepts more readily if it is losing.
 func offer_peace(from: int, to: int) -> bool:
 	var w := _war_between(from, to)
@@ -1079,42 +1062,23 @@ func offer_peace(from: int, to: int) -> bool:
 	if r.peace_refused_until > day:
 		post_news("%s will not hear envoys again so soon." % r.name, 2)
 		return false
-	var length := day - int(w["start"])
-	var they_lost: int = w["taken"].get(from, 0)
-	var they_won: int = w["taken"].get(to, 0)
-	var chance := 0.2 + clampf(length / 600.0, 0.0, 0.3) + 0.15 * (they_lost - they_won)
-	if realm_strength(r) < realm_strength(realms[from]) * 0.7:
-		chance += 0.25
-	if rng.randf() < clampf(chance, 0.05, 0.95):
+	if strategy.accepts_peace(to, from, w):
 		make_peace(from, to)
 		return true
 	r.peace_refused_until = day + 30
-	post_news("%s refuses your offer of peace." % r.full_name(), 2)
+	var length := day - int(w["start"])
+	var why := "they still expect to win" if length >= 60 else "the war has barely begun"
+	post_news("%s refuses your offer of peace: %s." % [r.full_name(), why], 2)
 	return false
 
 
 # --- AI ----------------------------------------------------------------------
 
+## Army orders every few days come from the realm's strategic mind (sim/strategy.gd).
 func _ai_think(r: Realm) -> void:
-	var ai_runs := not r.is_player or auto_rule
-	if not ai_runs:
+	if r.is_player and not auto_rule:
 		return
-	if r.enemies.is_empty():
-		_consider_war(r)
-	for a: Army in armies_of(r.id):
-		if a.manual or not a.path.is_empty() or a.battle != -1 or a.order != "":
-			continue
-		if a.task == "claim" or a.task == "siege":
-			var p := provinces[a.province]
-			if p.owner == -1 or at_war(r.id, p.owner):
-				# Storm the walls if the siege drags and we clearly outnumber the garrison.
-				if p.owner != -1 and a.task == "siege":
-					var g := garrison_size(p)
-					var bold := a.general_trait == "reckless" or a.stance == 2
-					if (bold and p.siege_progress > 0.3 and a.troops > g * 2.5) or (p.siege_progress > 0.6 and a.troops > g * 1.8):
-						start_assault(a.id)
-				continue  # still busy taking this province
-		_assign_task(r, a)
+	strategy.command_armies(r)
 
 
 func _assign_task(r: Realm, a: Army) -> void:
@@ -1177,48 +1141,6 @@ func _has_unclaimed_frontier(r: Realm) -> bool:
 			if provinces[nb].owner == -1:
 				return true
 	return false
-
-
-func _consider_war(r: Realm) -> void:
-	if day < 60 or r.provinces.is_empty():
-		return
-	var aggression: float = AGGRESSION.get(r.personality, 0.5)
-	var hungry := not _has_unclaimed_frontier(r)
-	if rng.randf() > aggression * (0.07 if hungry else 0.015):
-		return
-	if r.liege != -1:
-		return  # vassals fight their liege's wars
-	var mine := realm_strength(r)
-	var best := -1
-	var best_score := 0.0
-	for other in neighbor_realms(r):
-		var o := realms[other]
-		if int(r.truces.get(other, -1)) > day or o.liege == r.id or diplomacy.has_treaty("vassal", other, r.id):
-			continue
-		var pact := diplomacy.has_treaty("nap", r.id, other) or diplomacy.has_treaty("alliance", r.id, other) \
-			or diplomacy.has_treaty("defensive", r.id, other)
-		if pact and not ((r.personality == "ambitious" or r.personality == "cruel") and rng.randf() < 0.15):
-			continue
-		# Their friends count against us.
-		var theirs := realm_strength(o)
-		for ally in diplomacy.allies_of(other, ["alliance", "defensive"]):
-			if ally != r.id:
-				theirs += realm_strength(realms[ally]) * 0.5
-		var ratio := mine / maxf(theirs, 1.0)
-		var feeling := diplomacy.opinion(r.id, other)
-		var needed := 1.25 if feeling > -40.0 else 1.0
-		if ratio < needed:
-			continue
-		var score := ratio + rng.randf() * 0.5 - feeling / 100.0
-		if religion.group_of(o.faith) != religion.group_of(r.faith):
-			score += 0.3
-		if o.excommunicated and o.faith == r.faith:
-			score += 0.3
-		if score > best_score:
-			best_score = score
-			best = other
-	if best != -1:
-		declare_war(r.id, best)
 
 
 # --- Player actions -----------------------------------------------------------

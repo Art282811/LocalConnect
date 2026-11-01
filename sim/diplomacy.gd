@@ -234,10 +234,7 @@ func _ask_to_join(ally: int, friend: int, enemy: int, pair: Array) -> void:
 	if r.is_player:
 		_offer("call", friend, "%s calls you to arms against %s!" % [world.realms[friend].full_name(), world.realms[enemy].name], {"enemy": enemy, "pair": pair})
 		return
-	var chance := 0.5 + opinion(ally, friend) / 200.0
-	if world.realm_strength(world.realms[enemy]) > world.realm_strength(r) * 2.0:
-		chance -= 0.25
-	if world.rng.randf() < chance:
+	if world.strategy.will_join(ally, friend, enemy):
 		world.declare_war(ally, enemy, true, false, false, pair)
 		world.post_news("%s honours its pact and joins the war on %s." % [r.name, world.realms[enemy].name], 2 if world.realms[friend].is_player else 1)
 	else:
@@ -421,6 +418,11 @@ func answer_offer(offer_id: int, accept: bool) -> void:
 			else:
 				remember(from, me, -30.0)
 				world.post_news("You refuse %s's demand. They will not forget it." % world.realms[from].name, 1)
+		"peace":
+			if accept and world.at_war(me, from):
+				world.make_peace(me, from)
+			elif not accept:
+				_cooldown["%d:%d:peace" % [from, me]] = world.day + 90
 		"marriage":
 			var theirs := world.dynasty.person(int(data["theirs"]))
 			var mine := world.dynasty.person(int(data["mine"]))
@@ -450,6 +452,8 @@ func evaluate(kind: String, from: int, to: int) -> Array:
 	var a := world.realms[from]
 	var b := world.realms[to]
 	var o := opinion(to, from)
+	if kind == "nap" or kind == "alliance" or kind == "defensive":
+		o += world.strategy.pact_bias(kind, from, to)
 	var ratio := world.realm_strength(a) / maxf(world.realm_strength(b), 1.0)
 	if world.at_war(from, to) and kind != "gift":
 		return [false, "You are at war"]
@@ -468,11 +472,13 @@ func evaluate(kind: String, from: int, to: int) -> Array:
 			var need_t := -25.0 if b.personality == "greedy" else -10.0
 			return [o >= need_t, "opinion %d (needs %d)" % [int(o), int(need_t)]]
 		"tribute":
-			return [ratio >= 3.0 or (ratio >= 2.0 and o >= -40.0), "you are %.1f× as strong (needs 2–3×)" % ratio]
+			var yields := world.strategy.would_submit(to, from, "tribute")
+			return [yields, "they fear a war with you" if yields else "they would rather fight than pay"]
 		"vassal":
 			if b.liege != -1 or b.is_player:
 				return [false, "They will not kneel"]
-			return [ratio >= 5.0 or (ratio >= 3.5 and o >= -10.0), "you are %.1f× as strong (needs 3.5–5×)" % ratio]
+			var kneels := world.strategy.would_submit(to, from, "vassal") and o >= -30.0
+			return [kneels, "they see no hope of resisting you" if kneels else "they would rather fight than kneel"]
 		"offer_vassal":
 			return [ratio <= 0.9 and o >= -20.0, "they must be stronger and not hostile"]
 	return [false, ""]
@@ -572,58 +578,4 @@ func monthly() -> void:
 			offers.erase(o)
 			if o["kind"] == "call" and world.player_realm != -1:
 				_abandon(world.player_realm, int(o["from"]))
-	for r: Realm in world.realms:
-		if r.alive and not r.is_player and world.rng.randf() < 0.25:
-			_ai_act(r)
-
-
-func _ai_act(r: Realm) -> void:
-	# Vassals that hate a weak liege break free.
-	if r.liege != -1:
-		var liege := world.realms[r.liege]
-		if opinion(r.id, liege.id) < -20.0 and world.realm_strength(r) > world.realm_strength(liege) * 0.6:
-			world.declare_war(r.id, liege.id)
-		return
-	var me := world.realm_strength(r)
-	var options: Array = []
-	for other: Realm in world.realms:
-		if not other.alive or other == r or other.liege == r.id:
-			continue
-		var near := shares_border(r, other)
-		if not near and other.capital != -1 and r.capital != -1:
-			near = world.provinces[r.capital].center.distance_to(world.provinces[other.capital].center) < 600.0
-		if not near:
-			continue
-		var o := opinion(r.id, other.id)
-		var ratio := me / maxf(world.realm_strength(other), 1.0)
-		if has_treaty("alliance", r.id, other.id) and o < -10.0:
-			options.append([2.0, "break_alliance", other.id])
-			continue
-		if not has_treaty("nap", r.id, other.id) and not has_treaty("alliance", r.id, other.id) and o >= 0.0:
-			options.append([0.6 + o / 100.0, "nap", other.id])
-		if not has_treaty("alliance", r.id, other.id) and o >= 35.0:
-			options.append([0.8 + o / 100.0, "alliance", other.id])
-		if not has_treaty("trade", r.id, other.id) and has_market(r) and has_market(other) and o >= -10.0:
-			options.append([0.7 + (0.5 if r.personality == "greedy" else 0.0), "trade", other.id])
-		if ratio >= 2.5 and o < 10.0 and not has_treaty("tribute", r.id, other.id) and (r.personality == "greedy" or r.personality == "cruel" or r.personality == "ambitious"):
-			options.append([0.5 + ratio * 0.1, "tribute", other.id])
-		if ratio >= 4.0 and other.liege == -1 and r.personality == "ambitious":
-			options.append([0.6, "vassal", other.id])
-		if ratio < 0.5 and r.personality == "cautious" and float(r.res["gold"]) > GIFT_GOLD * 2.0:
-			options.append([0.5, "gift", other.id])
-	if options.is_empty():
-		return
-	options.sort_custom(func(x: Array, y: Array) -> bool: return float(x[0]) > float(y[0]))
-	var pick: Array = options[0]
-	var kind := str(pick[1])
-	var target := int(pick[2])
-	if kind == "break_alliance":
-		break_treaty("alliance", r.id, target)
-		world.post_news("%s tears up its alliance with %s." % [r.name, world.realms[target].name], 2 if world.realms[target].is_player else 0)
-		return
-	if cooldown_left(r.id, target, kind) > 0:
-		return
-	var result := propose(kind, r.id, target)
-	if result != "" and kind != "gift" and kind != "insult" and result.contains("agrees"):
-		var importance := 1 if kind == "alliance" or kind == "vassal" else 0
-		world.post_news(result.replace("agrees", "and %s agree" % r.name), importance)
+	# AI statecraft (pacts, alliances, demands) lives in sim/strategy.gd.

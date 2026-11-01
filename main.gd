@@ -939,6 +939,9 @@ func _diplomacy_text(rid: int) -> String:
 		bits.append("%s %+d" % [part[0], int(part[1])])
 	text += "[font_size=14]%s[/font_size]\n" % ", ".join(bits)
 	text += "You think of them: %+d\n" % int(dip.opinion(me, rid))
+	var sense := world.strategy.intent_toward(rid, me)
+	if sense != "":
+		text += "Envoys sense: %s\n" % sense
 	var friends := PackedStringArray()
 	for a in dip.allies_of(rid, ["alliance", "defensive"]):
 		friends.append(world.realms[a].name)
