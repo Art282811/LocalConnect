@@ -59,6 +59,11 @@ func _ready() -> void:
 	add_child(cam)
 	cam.make_current()
 	cam.tapped.connect(_on_tap)
+	cam.right_tapped.connect(_on_right_tap)
+	cam.hovered.connect(_on_hover)
+	cam.drag_moved.connect(_on_army_drag)
+	cam.drag_released.connect(_on_army_drop)
+	cam.drag_filter = _drag_filter
 	cam.zoom_changed.connect(_on_zoom)
 
 	hud = Hud.new()
@@ -86,6 +91,7 @@ func _ready() -> void:
 	hud.settings_changed.connect(_apply_settings)
 	hud.tutorial_next.connect(_tutorial_advance)
 	hud.tutorial_skip.connect(_tutorial_finish)
+	hud.army_chosen.connect(_on_army_chosen)
 
 	randomize()
 	_new_world(randi())
@@ -250,6 +256,7 @@ func _on_spectate() -> void:
 
 func _refresh_hud() -> void:
 	hud.set_date(world.date_string())
+	_refresh_army_bar()
 	_maybe_show_event()
 	if world.player_realm != -1:
 		var r := world.realms[world.player_realm]
@@ -329,6 +336,9 @@ func _clear_selection() -> void:
 	_pending = ""
 	_route_from = -1
 	_info_kind = ""
+	if overlay != null:
+		overlay.preview_end = Vector2.INF
+	_preview_for = Vector2i(-1, -1)
 	if battle_view != null:
 		battle_view.selected_battle = -1
 		battle_view.selected_regiment = -1
@@ -368,25 +378,158 @@ func _on_tap(world_pos: Vector2, screen_pos: Vector2) -> void:
 		_select_army(army_id)
 		return
 
-	if selected_army != -1:
-		var a := world.army_by_id(selected_army)
-		if a != null and a.realm == world.player_realm and pid != -1 and (pid != a.province or _pending == "raid"):
-			var kind := "raid" if _pending == "raid" else "take"
-			var days := world.order_army(selected_army, pid, kind)
-			if days >= 0:
-				var verb := "rides out to raid" if kind == "raid" else "marches on"
-				hud.add_news("Lord %s %s %s (about %d days)." % [a.general, verb, world.provinces[pid].name, days])
-			else:
-				hud.add_news("No road leads to %s. Armies cannot cross neutral realms; declare war first." % world.provinces[pid].name)
-			_clear_selection()
-			hud.hide_info()
-			return
+	if selected_army != -1 and _order_selected(pid):
+		return
 
 	if pid == -1:
 		_clear_selection()
 		hud.hide_info()
 		return
 	_select_province(pid)
+
+
+# --- Direct control: hover, right-click, drag ---------------------------------------------
+
+var _hover_pid := -1
+var _preview_for := Vector2i(-1, -1)   # (army, province) the preview was built for
+
+
+## Send the selected army (yours) to `pid`. Keeps it selected so you can redirect it.
+func _order_selected(pid: int) -> bool:
+	var a := world.army_by_id(selected_army)
+	if a == null or a.realm != world.player_realm or pid == -1:
+		return false
+	if pid == a.province and _pending != "raid":
+		return false
+	var kind := "raid" if _pending == "raid" else "take"
+	var days := world.order_army(a.id, pid, kind)
+	if days >= 0:
+		var verb := "rides out to raid" if kind == "raid" else "marches on"
+		hud.add_news("Lord %s %s %s (about %d days)." % [a.general, verb, world.provinces[pid].name, days])
+		sound.play("horn" if world.provinces[pid].owner != -1 and world.at_war(a.realm, world.provinces[pid].owner) else "click")
+	else:
+		hud.add_news("No road leads to %s. Armies cannot cross neutral realms; declare war first." % world.provinces[pid].name)
+	_pending = ""
+	_select_army(a.id)
+	return true
+
+
+func _on_right_tap(world_pos: Vector2, screen_pos: Vector2) -> void:
+	if world.spawn_mode:
+		return
+	var pid := world.province_at(world_pos)
+	if selected_army != -1 and _order_selected(pid):
+		return
+	# Right-click on one of your armies selects it.
+	var army_id := _army_at(screen_pos)
+	if army_id != -1:
+		_select_army(army_id)
+
+
+func _on_hover(world_pos: Vector2, _screen_pos: Vector2) -> void:
+	var pid := world.province_at(world_pos)
+	if pid != _hover_pid:
+		_hover_pid = pid
+		overlay.hover_province = pid
+	_update_preview(pid)
+
+
+## Show where the selected army would go and how long it would take.
+func _update_preview(pid: int) -> void:
+	var a := world.army_by_id(selected_army)
+	if a == null or a.realm != world.player_realm or pid == -1 or pid == a.province or world.spawn_mode:
+		overlay.preview_end = Vector2.INF
+		_preview_for = Vector2i(-1, -1)
+		return
+	if not a.path.is_empty() and a.path[a.path.size() - 1] == pid:
+		overlay.preview_end = Vector2.INF   # already going there
+		_preview_for = Vector2i(-1, -1)
+		return
+	var key := Vector2i(a.id, pid)
+	if key == _preview_for:
+		return
+	_preview_for = key
+	var path := world.find_path(a.province, a.realm, 500, world._is_target.bind(pid))
+	overlay.preview_end = world.provinces[pid].center
+	if path.is_empty():
+		overlay.preview_days = -1
+		overlay.preview_path = PackedVector2Array()
+		var owner := world.provinces[pid].owner
+		overlay.preview_note = "At peace with %s" % world.realms[owner].name if owner != -1 and not world.at_war(a.realm, owner) else "No road"
+		return
+	var pts := PackedVector2Array([world.army_position(a)])
+	var days := 0
+	var prev := a.province
+	for step in path:
+		pts.append(world.provinces[step].center)
+		days += world.move_days(prev, step)
+		prev = step
+	overlay.preview_days = days
+	overlay.preview_path = pts
+
+
+var _dragging_army := -1
+
+
+func _days_left(a: Army) -> int:
+	if a.path.is_empty():
+		return 0
+	var days := (1.0 - a.progress) * world.move_days(a.province, a.path[0])
+	var prev := a.path[0]
+	for i in range(1, a.path.size()):
+		days += world.move_days(prev, a.path[i])
+		prev = a.path[i]
+	return int(ceil(days))
+
+
+## Pressing on one of your armies starts dragging it instead of the map.
+func _drag_filter(screen_pos: Vector2) -> bool:
+	if world.spawn_mode:
+		return false
+	var army_id := _army_at(screen_pos)
+	var a := world.army_by_id(army_id)
+	if a == null or a.realm != world.player_realm or a.battle != -1:
+		return false
+	_dragging_army = army_id
+	if selected_army != army_id:
+		_select_army(army_id)
+	return true
+
+
+func _on_army_drag(world_pos: Vector2, _screen_pos: Vector2) -> void:
+	if _dragging_army == -1:
+		return
+	var pid := world.province_at(world_pos)
+	overlay.hover_province = pid
+	_update_preview(pid)
+
+
+func _on_army_drop(world_pos: Vector2, _screen_pos: Vector2) -> void:
+	if _dragging_army == -1:
+		return
+	_dragging_army = -1
+	_order_selected(world.province_at(world_pos))
+	_preview_for = Vector2i(-1, -1)
+
+
+## The army bar: click an army to glide to it and select it.
+func _on_army_chosen(army_id: int) -> void:
+	var a := world.army_by_id(army_id)
+	if a == null:
+		return
+	cam.focus(world.army_position(a), maxf(cam.target_zoom, 1.2))
+	_select_army(army_id)
+
+
+func _refresh_army_bar() -> void:
+	var entries: Array = []
+	if world.player_realm != -1:
+		for a: Army in world.armies_of(world.player_realm):
+			var doing := "in battle" if a.battle != -1 else ("marching" if not a.path.is_empty() else a.task)
+			if doing == "idle":
+				doing = "ready"
+			entries.append([a.id, "%s · %s · %s" % [a.general, OverlayView._short(a.troops), doing], a.id == selected_army])
+	hud.set_army_bar(entries)
 
 
 ## Returns true if the tap was used by the battle.
@@ -555,13 +698,13 @@ func _army_text(a: Army) -> String:
 	text += "[b]%d[/b] troops · quality %.1f · stance %s\n" % [a.troops, a.quality, STANCE_NAMES[a.stance].to_lower()]
 	text += "%s at %s" % [task_names.get(a.task, a.task), world.provinces[a.province].name]
 	if not a.path.is_empty():
-		text += " → %s" % world.provinces[a.path[a.path.size() - 1]].name
+		text += ", heading for %s (%d days)" % [world.provinces[a.path[a.path.size() - 1]].name, _days_left(a)]
 	if a.order == "hold":
 		text += "\nDug in for %d days%s" % [int(a.dug_in), " · stakes planted" if a.dug_in >= 4.0 else ""]
 	if a.order == "raid" and a.path.is_empty():
 		text += "\nRaiding: day %d of 20" % a.raid_days
 	if r.is_player:
-		text += "\n[i]Tap a province to march there and take it.[/i]"
+		text += "\n[i]Hover a province to see the route. Click or right-click to march, or drag the army there.[/i]"
 	return text
 
 
@@ -1147,7 +1290,7 @@ func _dynasty_text(r: Realm) -> String:
 	for c in dyn.family_of(r):
 		for k in c.claims:
 			if world.realms[k].alive and k != r.id:
-				claims.append("%s → %s" % [c.name, world.realms[k].name])
+				claims.append("%s on %s" % [c.name, world.realms[k].name])
 	if not claims.is_empty():
 		text += "Claims: %s\n" % ", ".join(claims)
 	text += "\n[b]Great families[/b]\n"
@@ -1714,4 +1857,8 @@ func _choose_spawn(pid: int) -> void:
 	hud.set_speed(world.speed)
 	_clear_selection()
 	hud.hide_info()
-	cam.focus(world.provinces[pid].center, 1.0)
+	cam.focus(world.provinces[pid].center, 1.3)
+	# Start with your army in hand: hover a province to see the route, click to march.
+	var mine := world.armies_of(world.player_realm)
+	if not mine.is_empty():
+		_select_army(mine[0].id)

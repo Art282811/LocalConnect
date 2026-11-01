@@ -23,6 +23,7 @@ signal main_menu_pressed
 signal settings_changed
 signal tutorial_next
 signal tutorial_skip
+signal army_chosen(army_id: int)
 
 const SPEEDS := [0.0, 0.25, 1.0, 2.0, 4.0]
 
@@ -65,6 +66,8 @@ var settings_panel: PanelContainer
 var settings_box: VBoxContainer
 var tutorial_panel: PanelContainer
 var tutorial_text: RichTextLabel
+var army_bar: VBoxContainer
+var _army_bar_key := ""
 
 
 func _ready() -> void:
@@ -85,6 +88,7 @@ func _ready() -> void:
 	_build_menu(root)
 	_build_settings(root)
 	_build_tutorial(root)
+	_build_army_bar(root)
 	_build_title(root)
 	apply_safe_area()
 	get_viewport().size_changed.connect(apply_safe_area)
@@ -218,7 +222,7 @@ func _build_info(root: Control) -> void:
 	info_panel.anchor_right = 0.0
 	info_panel.anchor_bottom = 1.0
 	info_panel.offset_left = 10
-	info_panel.offset_right = 520
+	info_panel.offset_right = 450
 	info_panel.offset_bottom = -10
 	info_panel.offset_top = -10
 	info_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -229,7 +233,7 @@ func _build_info(root: Control) -> void:
 	var head := HBoxContainer.new()
 	col.add_child(head)
 	info_title = Label.new()
-	info_title.add_theme_font_size_override("font_size", 24)
+	info_title.add_theme_font_size_override("font_size", 20)
 	info_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(info_title)
 	var close := _button("X", head)
@@ -238,7 +242,10 @@ func _build_info(root: Control) -> void:
 	info_body.bbcode_enabled = true
 	info_body.fit_content = true
 	info_body.scroll_active = false
-	info_body.custom_minimum_size.x = 480
+	info_body.custom_minimum_size.x = 420
+	info_body.add_theme_font_size_override("normal_font_size", 15)
+	info_body.add_theme_font_size_override("bold_font_size", 15)
+	info_body.add_theme_font_size_override("italics_font_size", 14)
 	col.add_child(info_body)
 	info_actions = HFlowContainer.new()
 	col.add_child(info_actions)
@@ -546,6 +553,45 @@ func _build_tutorial(root: Control) -> void:
 	_button("Next", row).pressed.connect(func() -> void: tutorial_next.emit())
 
 
+## Your armies, bottom right: click one to fly the camera to it.
+func _build_army_bar(root: Control) -> void:
+	army_bar = VBoxContainer.new()
+	army_bar.anchor_left = 1.0
+	army_bar.anchor_right = 1.0
+	army_bar.anchor_top = 1.0
+	army_bar.anchor_bottom = 1.0
+	army_bar.offset_left = -330
+	army_bar.offset_right = -10
+	army_bar.offset_top = -10
+	army_bar.offset_bottom = -10
+	army_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	army_bar.alignment = BoxContainer.ALIGNMENT_END
+	army_bar.add_theme_constant_override("separation", 4)
+	army_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(army_bar)
+
+
+## entries: [[army id, label, selected], ...]; rebuilt only when something changed.
+func set_army_bar(entries: Array) -> void:
+	var key := str(entries)
+	if key == _army_bar_key:
+		return
+	_army_bar_key = key
+	for c in army_bar.get_children():
+		army_bar.remove_child(c)
+		c.queue_free()
+	for e in entries.slice(0, 6):
+		var b := _button(str(e[1]), army_bar)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.clip_text = true
+		b.custom_minimum_size = Vector2(320, 40)
+		b.add_theme_font_size_override("font_size", 16)
+		if e[2]:
+			b.add_theme_color_override("font_color", Color(0.55, 0.1, 0.05))
+			b.text = "> " + b.text
+		b.pressed.connect(func() -> void: army_chosen.emit(int(e[0])))
+
+
 func show_tutorial(text: String) -> void:
 	if text == "":
 		tutorial_panel.visible = false
@@ -673,6 +719,8 @@ func show_info(title: String, body: String, actions: Array) -> void:
 		c.queue_free()
 	for act in actions:
 		var b := _button(act[0], info_actions)
+		b.custom_minimum_size = Vector2(44, 36)
+		b.add_theme_font_size_override("font_size", 15)
 		b.pressed.connect(act[1])
 		if act.size() > 2:
 			b.disabled = not act[2]

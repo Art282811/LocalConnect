@@ -13,6 +13,13 @@ var selected_army := -1
 var font: Font
 var positions := {}  # army id -> drawn world position (for tapping)
 var _puffs: Array = []
+## Interaction feedback (set by main.gd).
+var hover_province := -1
+var preview_path := PackedVector2Array()   # route the selected army would take
+var preview_days := -1                     # -1 = no route there
+var preview_end := Vector2.INF
+var preview_note := "No road"
+var _t := 0.0
 
 
 func _ready() -> void:
@@ -34,6 +41,8 @@ func _draw() -> void:
 	if world == null:
 		return
 	var s := 1.0 / clampf(zoom, 0.3, 2.0)
+	_t += get_process_delta_time()
+	_draw_hover(s)
 	if zoom >= 0.45:
 		_draw_trade(s)
 	_draw_grand_routes(s)
@@ -41,6 +50,7 @@ func _draw() -> void:
 	_draw_occupations(s)
 	_draw_puffs(s)
 	_draw_armies(s)
+	_draw_preview(s)
 
 
 var _clock := 0.0
@@ -232,30 +242,94 @@ func _draw_armies(s: float) -> void:
 		stack[key] = n + 1
 		pos += Vector2(14.0 * n, -6.0 * n) * s
 		positions[a.id] = pos
-		if a.id == selected_army:
+		if a.id == selected_army or (world.realms[a.realm].is_player and not a.path.is_empty()):
 			_draw_route(a, s)
 		_banner(a, pos, s)
 
 
+## Marching route: a line with chevrons flowing toward the destination.
 func _draw_route(a: Army, s: float) -> void:
-	var prev := world.army_position(a)
+	if a.path.is_empty():
+		return
+	var pts := PackedVector2Array([world.army_position(a)])
 	for pid: int in a.path:
-		var next := world.provinces[pid].center
-		draw_dashed_line(prev, next, Color(0.75, 0.1, 0.08), 3.0 * s, 10.0 * s)
-		prev = next
-	if not a.path.is_empty():
-		draw_circle(prev, 7.0 * s, Color(0.75, 0.1, 0.08))
+		pts.append(world.provinces[pid].center)
+	var mine := world.realms[a.realm].is_player
+	_flowing_path(pts, Color(0.85, 0.65, 0.15) if mine else Color(0.75, 0.1, 0.08), s)
+
+
+func _flowing_path(pts: PackedVector2Array, col: Color, s: float) -> void:
+	for i in pts.size() - 1:
+		draw_line(pts[i], pts[i + 1], Color(col, 0.35), 7.0 * s, true)
+		draw_line(pts[i], pts[i + 1], col, 2.5 * s, true)
+	# Chevrons that march along the path.
+	var total := 0.0
+	for i in pts.size() - 1:
+		total += pts[i].distance_to(pts[i + 1])
+	var spacing := 26.0 * s
+	var offset := fmod(_t * 40.0 * s, spacing)
+	var d := offset
+	while d < total:
+		var walked := 0.0
+		for i in pts.size() - 1:
+			var seg := pts[i].distance_to(pts[i + 1])
+			if walked + seg >= d:
+				var dir := (pts[i + 1] - pts[i]).normalized()
+				var at := pts[i] + dir * (d - walked)
+				var side := dir.orthogonal() * 5.0 * s
+				draw_polyline(PackedVector2Array([at - dir * 5.0 * s + side, at, at - dir * 5.0 * s - side]), Color(1, 1, 1, 0.9), 2.0 * s, true)
+				break
+			walked += seg
+		d += spacing
+	var end := pts[pts.size() - 1]
+	draw_circle(end, 8.0 * s, Color(col, 0.35))
+	draw_circle(end, 4.5 * s, col)
+
+
+func _draw_hover(s: float) -> void:
+	if hover_province == -1:
+		return
+	var p := world.provinces[hover_province]
+	for piece in p.polygons:
+		var closed: PackedVector2Array = piece.duplicate()
+		closed.append(piece[0])
+		draw_polyline(closed, Color(1.0, 0.95, 0.75, 0.9), 3.0 * s, true)
+
+
+## What would happen if you sent the selected army to the hovered province.
+func _draw_preview(s: float) -> void:
+	if preview_end == Vector2.INF:
+		return
+	var label := ""
+	var col := Color(0.2, 0.55, 0.2)
+	if preview_days < 0:
+		col = Color(0.7, 0.12, 0.08)
+		label = preview_note
+	else:
+		label = "%d days" % preview_days
+		_flowing_path(preview_path, Color(col, 0.85), s)
+	var fs := int(15.0 * s)
+	var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var at := preview_end + Vector2(14, -14) * s
+	var box := Rect2(at - Vector2(5 * s, fs), Vector2(w + 10 * s, fs + 8 * s))
+	draw_rect(box, Color(PAPER, 0.95))
+	draw_rect(box, col, false, 1.5 * s)
+	draw_string(font, at + Vector2(0, -1 * s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col.darkened(0.3))
 
 
 func _banner(a: Army, at: Vector2, s_in: float) -> void:
 	# From afar, banners shrink and only big or player armies show their count.
 	var far := zoom < LabelsView.REGION_ZOOM
-	var s := s_in * (0.65 if far else 1.0)
 	var r := world.realms[a.realm]
+	# Your own armies stay big and wear a gold ring so you can always find them.
+	var s := s_in * (1.15 if r.is_player else (0.65 if far else 1.0))
 	var col := r.color()
 	var dark := r.border_color()
+	if r.is_player:
+		var pulse := 0.5 + 0.5 * sin(_t * 3.0 + a.id)
+		draw_arc(at + Vector2(0, -8) * s, (24.0 + 3.0 * pulse) * s, 0, TAU, 32, Color(1.0, 0.8, 0.25, 0.6 + 0.3 * pulse), 3.0 * s, true)
 	if a.id == selected_army:
-		draw_circle(at, 26.0 * s, Color(1.0, 0.85, 0.3, 0.55))
+		draw_circle(at + Vector2(0, -8) * s, 26.0 * s, Color(1.0, 0.85, 0.3, 0.45))
 	# Pole and swallow-tail flag in the realm colour.
 	var top := at + Vector2(-8, -30) * s
 	draw_line(at + Vector2(-8, 4) * s, top, INK, 2.0 * s)

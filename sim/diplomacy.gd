@@ -450,7 +450,7 @@ func _offer(kind: String, from: int, text: String, data: Dictionary = {}) -> voi
 			return
 	offers.append({"id": _next_offer, "kind": kind, "from": from, "text": text, "expires": world.day + OFFER_DAYS, "data": data})
 	_next_offer += 1
-	world.post_news(text + " (see Realm → Offers)", 2)
+	world.post_news(text + " (see Realm, then Offers)", 2)
 
 
 func answer_offer(offer_id: int, accept: bool) -> void:

@@ -14,9 +14,17 @@ design document (`docs/game-design-document.pdf`).
 2. Open Godot → **Import** → pick `project.godot` in this folder.
 3. Press **F5** (Run project).
 
-Desktop controls: drag to pan, mouse wheel to zoom, click to select.
-Keys: `Space` pause/resume, `0` slow-motion (¼), `1` / `2` / `3` speed.
-Phone/tablet: one finger pans, two fingers pinch-zoom, tap to select.
+**Controls**
+- **Move the map:** drag (it glides on when you let go), two-finger drag on a
+  trackpad, or WASD / arrow keys. **Zoom:** scroll wheel or pinch (zooms where
+  your cursor is), double-click to zoom in, Q/E or -/= keys.
+- **Your armies** wear a gold ring; the **army bar** (bottom right) lists them;
+  click one to fly to it. Your army is selected when you start.
+- **March:** with your army selected, **hover** any province to see the route and
+  how many days it takes; **click or right-click** to send it, or **drag** the
+  army onto a province. Marching routes flow with arrows.
+- `Space` pause/resume, `0` slow-motion (¼), `1` / `2` / `3` speed, `Esc` deselect.
+- Phone/tablet: one finger pans, two fingers pinch-zoom, tap to select, tap to march.
 
 ## Play it on your phone
 
