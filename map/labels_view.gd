@@ -79,6 +79,9 @@ func _draw_realm_names(region: bool) -> void:
 			text = _spaced(text)  # spaced capitals for great realms
 		var col := Color(r.border_color(), alpha)
 		_text_centered(text, c, size, col, Color(PAPER, alpha * 0.8), maxi(2, size / 10))
+		if n >= 3 and not region:
+			var w := serif.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+			Heraldry.draw_shield(self, c - Vector2(w * 0.5 + size * 0.7, 0), size * 1.1, r, maxf(size / 25.0, 1.0))
 		if n >= 3:
 			_text_centered(r.title().to_upper(), c - Vector2(0, size * 0.75), int(size * 0.4), col, Color(PAPER, alpha * 0.8), 2)
 

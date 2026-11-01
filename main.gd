@@ -9,6 +9,7 @@ var overlay: OverlayView
 var battle_view: BattleView
 var cam: CameraRig
 var hud: Hud
+var sound: Sound
 
 var selected_province := -1
 var selected_army := -1
@@ -22,9 +23,27 @@ var _mode_timer := 0.0
 var _speed_before_event := 1.0
 const MAP_MODES := ["realms", "faiths", "diplomacy"]
 var _ui_timer := 0.0
+var _tutorial_step := -1
+var _last_autosave_day := 0
+var _on_title := true
+
+const TUTORIAL := [
+	["Welcome! [b]Drag[/b] to move the map, [b]pinch or scroll[/b] to zoom. Tap any province to choose where your dynasty begins: empty land founds a new realm, owned land takes over a realm.", "spawn"],
+	["This is your realm. Find your army (the [b]banner with a number[/b]) and tap it.", "army_selected"],
+	["Now tap a nearby [b]unclaimed[/b] province (plain parchment). Your army marches there and claims it.", "army_ordered"],
+	["While they march, tap your [b]capital[/b] and choose [b]Build…[/b]. Farms feed your people; markets bring gold.", "building"],
+	["The bar under the top shows your [b]food, gold, wood, stone, iron and faith[/b] and how they change each day. Tap [b]Realm[/b] to set taxes or hold a festival.", "realm_open"],
+	["Tap [b]Dynasty[/b] to meet your family, your heir and the great families. If your line ends, you lose.", "dynasty_open"],
+	["Tap a neighbour's province, then [b]Diplomacy…[/b] to send gifts, sign pacts, arrange marriages, or declare war.", "diplomacy_open"],
+	["When armies meet, a [b]Battle![/b] button appears. Zoom in to watch your soldiers or [b]Take command[/b]; [b]¼[/b] is slow motion. The [b]Menu[/b] saves your game. Rule well!", "end"],
+]
 
 
 func _ready() -> void:
+	Settings.load_settings()
+	get_tree().root.content_scale_factor = Settings.ui_scale()
+	sound = Sound.new()
+	add_child(sound)
 	map_view = MapView.new()
 	add_child(map_view)
 	labels = LabelsView.new()
@@ -46,7 +65,10 @@ func _ready() -> void:
 	hud.speed_chosen.connect(_on_speed)
 	hud.steward_toggled.connect(func(on: bool) -> void: world.auto_rule = on)
 	hud.spectate_pressed.connect(_on_spectate)
-	hud.new_world_pressed.connect(func() -> void: _new_world(randi()))
+	hud.new_world_pressed.connect(func() -> void:
+		_on_title = false
+		_new_world(randi())
+	)
 	hud.rise_again_pressed.connect(_on_rise_again)
 	hud.realm_pressed.connect(_show_realm)
 	hud.battle_alert_pressed.connect(_on_battle_alert)
@@ -54,17 +76,34 @@ func _ready() -> void:
 	hud.dynasty_pressed.connect(_show_dynasty)
 	hud.continue_pressed.connect(_on_continue)
 	hud.event_closed.connect(_on_event_closed)
+	hud.clicked.connect(func() -> void: sound.play("click"))
+	hud.play_pressed.connect(_on_play)
+	hud.continue_game_pressed.connect(func() -> void: _load_game(SaveGame.newest()))
+	hud.save_pressed.connect(_save_game)
+	hud.load_pressed.connect(func() -> void: _load_game(SaveGame.SLOT if SaveGame.exists() else SaveGame.newest()))
+	hud.main_menu_pressed.connect(_to_title)
+	hud.settings_changed.connect(_apply_settings)
+	hud.tutorial_next.connect(_tutorial_advance)
+	hud.tutorial_skip.connect(_tutorial_finish)
 
 	randomize()
 	_new_world(randi())
+	_to_title()
 
 
 func _new_world(seed_value: int) -> void:
-	world = World.new()
-	world.setup(seed_value)
+	var w := World.new()
+	w.setup(seed_value)
+	_attach(w)
+	hud.show_spawn(not _on_title)
+
+
+func _attach(w: World) -> void:
+	world = w
 	world.news_posted.connect(_on_news)
+	world.battle_started.connect(_on_battle_started)
 	world.map_changed.connect(_on_map_changed)
-	world.battle_fought.connect(func(pos: Vector2, troops: int) -> void: overlay.add_battle(pos, troops))
+	world.battle_fought.connect(_on_battle_fought)
 	world.player_lost.connect(_on_player_lost)
 	world.battle_ended.connect(_on_battle_ended)
 	world.dynasty_lost.connect(_on_dynasty_lost)
@@ -76,9 +115,9 @@ func _new_world(seed_value: int) -> void:
 	cam.setup(world.map_size)
 	_on_zoom(cam.zoom.x)
 	_on_map_changed()
-	hud.show_spawn(true)
-	hud.set_speed(0)
-	hud.set_steward(false)
+	hud.set_speed(world.speed)
+	hud.set_steward(world.auto_rule)
+	_last_autosave_day = world.day
 	hud.hide_info()
 	map_view.mode = "realms"
 	hud.set_map_mode("Realms")
@@ -92,6 +131,8 @@ func _process(delta: float) -> void:
 	if _ui_timer >= 0.25:
 		_ui_timer = 0.0
 		_refresh_hud()
+		_tutorial_update()
+		_maybe_autosave()
 	if map_view.mode == "diplomacy":
 		_mode_timer += delta
 		if _mode_timer > 2.0:
@@ -124,6 +165,24 @@ func _unhandled_key_input(event: InputEvent) -> void:
 func _on_news(text: String, importance: int) -> void:
 	if importance >= 1:
 		hud.add_news(text)
+	if importance >= 2:
+		if text.contains("dies") or text.contains("falls in battle") or text.contains("has fallen") or text.contains("has died"):
+			sound.play("toll")
+		else:
+			sound.play("bell")
+	elif text.contains("completed") or text.contains("Levies gather") or text.contains("You claim"):
+		sound.play("coin")
+
+
+func _on_battle_fought(pos: Vector2, troops: int) -> void:
+	overlay.add_battle(pos, troops)
+	if battle_view.view_rect.has_point(pos):
+		sound.play("clash")
+
+
+func _on_battle_started(b: Battle) -> void:
+	if world.player_realm != -1 and b.side_realm.has(world.player_realm):
+		sound.play("horn")
 
 
 func _on_map_changed() -> void:
@@ -1269,6 +1328,128 @@ func _on_continue() -> void:
 	hud.set_speed(1.0)
 	if world.player_realm != -1:
 		hud.add_news("You play on as the house of %s." % world.realms[world.player_realm].house)
+
+
+# --- Title, saving, settings ------------------------------------------------------------------
+
+func _to_title() -> void:
+	if world.player_realm != -1 and not world.spawn_mode and not _on_title:
+		SaveGame.save(world, SaveGame.AUTOSAVE)   # so Continue picks up right here
+	_on_title = true
+	world.speed = 0.0
+	hud.set_speed(0.0)
+	_clear_selection()
+	hud.hide_info()
+	hud.show_spawn(false)
+	hud.show_tutorial("")
+	hud.show_title(SaveGame.newest() != "")
+
+
+func _on_play() -> void:
+	_on_title = false
+	hud.hide_title()
+	_new_world(randi())
+	if not Settings.tutorial_done:
+		_tutorial_step = 0
+
+
+func _save_game() -> void:
+	if world.player_realm == -1 and world.spawn_mode:
+		hud.add_news("Pick a realm before saving.")
+		return
+	if SaveGame.save(world):
+		hud.add_news("Game saved.")
+		sound.play("coin")
+	else:
+		hud.add_news("Could not save the game.")
+
+
+func _load_game(path: String) -> void:
+	if path == "":
+		hud.add_news("No saved game found.")
+		return
+	var w := SaveGame.load_world(path)
+	if w == null:
+		hud.add_news("That save could not be read.")
+		return
+	_on_title = false
+	hud.hide_title()
+	_attach(w)
+	hud.show_spawn(false)
+	_tutorial_step = -1
+	hud.show_tutorial("")
+	if w.player_realm != -1 and w.realms[w.player_realm].capital != -1:
+		cam.focus(w.provinces[w.realms[w.player_realm].capital].center, 1.0)
+	hud.add_news("Welcome back. The game is paused; press a speed to continue.")
+
+
+func _maybe_autosave() -> void:
+	if not Settings.autosave or world.player_realm == -1 or world.spawn_mode:
+		return
+	if world.day - _last_autosave_day >= World.DAYS_PER_YEAR:
+		_last_autosave_day = world.day
+		SaveGame.save(world, SaveGame.AUTOSAVE)
+
+
+func _apply_settings() -> void:
+	get_tree().root.content_scale_factor = Settings.ui_scale()
+	sound.set_music(Settings.music)
+
+
+# --- Tutorial ----------------------------------------------------------------------------
+
+func _tutorial_update() -> void:
+	if _tutorial_step < 0 or _on_title:
+		hud.show_tutorial("")
+		return
+	var step: Array = TUTORIAL[_tutorial_step]
+	if _tutorial_done_check(str(step[1])):
+		_tutorial_advance()
+		return
+	hud.show_tutorial("[b]%d / %d[/b]  %s" % [_tutorial_step + 1, TUTORIAL.size(), step[0]])
+
+
+func _tutorial_done_check(goal: String) -> bool:
+	var me := world.player_realm
+	match goal:
+		"spawn":
+			return not world.spawn_mode and me != -1
+		"army_selected":
+			var a := world.army_by_id(selected_army)
+			return a != null and a.realm == me
+		"army_ordered":
+			for a: Army in world.armies_of(me):
+				if a.manual or a.task == "claim":
+					return true
+		"building":
+			if me != -1:
+				for pid: int in world.realms[me].provinces:
+					if world.provinces[pid].build_id != "":
+						return true
+		"realm_open":
+			return _info_kind == "realm"
+		"dynasty_open":
+			return _info_kind in ["dynasty", "family", "nobles", "prisoners"]
+		"diplomacy_open":
+			return _info_kind == "diplomacy"
+	return false
+
+
+func _tutorial_advance() -> void:
+	if _tutorial_step < 0:
+		return
+	_tutorial_step += 1
+	if _tutorial_step >= TUTORIAL.size():
+		_tutorial_finish()
+	else:
+		sound.play("coin")
+
+
+func _tutorial_finish() -> void:
+	_tutorial_step = -1
+	hud.show_tutorial("")
+	Settings.tutorial_done = true
+	Settings.save_settings()
 
 
 func _act_go_capital() -> void:

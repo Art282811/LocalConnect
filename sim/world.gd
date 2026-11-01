@@ -54,6 +54,7 @@ var map_size := Vector2.ZERO
 var hex_radius := 50.0
 
 var names: NameGen
+var world_seed: int = 0
 var economy: Economy
 var diplomacy: Diplomacy
 var religion: Religion
@@ -65,6 +66,7 @@ var _targeted := {}               # province id -> army id heading there
 
 
 func setup(seed_value: int) -> void:
+	world_seed = seed_value
 	rng.seed = seed_value
 	var world_data := _load_json("res://data/world.json")
 	names = NameGen.new(_load_json("res://data/names.json"), rng)

@@ -204,7 +204,7 @@ func _banner(a: Army, at: Vector2, s: float) -> void:
 	var outline := flag.duplicate()
 	outline.append(top)
 	draw_polyline(outline, dark, 1.5 * s)
-	draw_line(top + Vector2(4, 7) * s, top + Vector2(14, 7) * s, dark, 2.0 * s)
+	Heraldry.draw_shield(self, top + Vector2(9, 7) * s, 11.0 * s, r, 1.0 * s)
 	if r.is_player:
 		draw_circle(top + Vector2(0, -3) * s, 3.0 * s, Color(0.95, 0.75, 0.2))
 	# Troop count plaque.

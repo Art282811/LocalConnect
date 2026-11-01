@@ -4,8 +4,8 @@ A real-time medieval kingdom builder for phones: found a tiny realm anywhere on 
 map of Europe and the Near East, grow it into an empire, and keep it alive through
 war, faith, diplomacy and family politics.
 
-This repo contains **Layers 1–5** (living map, your realm, battles, diplomacy &
-religion, dynasty & drama) from the
+This repo contains **all six layers** (living map, your realm, battles,
+diplomacy & religion, dynasty & drama, polish & phone) from the
 design document (`docs/game-design-document.pdf`).
 
 ## Running it
@@ -17,6 +17,50 @@ design document (`docs/game-design-document.pdf`).
 Desktop controls: drag to pan, mouse wheel to zoom, click to select.
 Keys: `Space` pause/resume, `0` slow-motion (¼), `1` / `2` / `3` speed.
 Phone/tablet: one finger pans, two fingers pinch-zoom, tap to select.
+
+## Play it on your phone
+
+**Android — easiest, no computer needed:**
+1. Install **Godot Engine** (4.3 or newer) from Google Play.
+2. Unzip the project into a folder on the phone.
+3. Open Godot → **Import** → pick `project.godot` → tap **Run** (▶).
+
+**Android — as a real app (needs a computer once):**
+1. On a PC/Mac install Godot 4.3+, then in Godot: **Editor → Manage Export
+   Templates → Download**.
+2. Install **OpenJDK 17** and the **Android SDK** (easiest: install Android
+   Studio). In Godot: **Editor → Editor Settings → Export → Android**, point it
+   at the Java and Android SDK folders.
+3. **Project → Export → Android** (the preset is already set up) → **Export
+   Project** → you get `build/android/crusader-kingdoms.apk`.
+4. Copy the `.apk` to your phone, open it, allow "install unknown apps".
+   (Or plug the phone in with USB debugging on and press the Android icon at the
+   top right of Godot to install and run it directly.)
+
+**iPhone / iPad:**
+- *Without a Mac:* use the **Web** preset (**Project → Export → Web**, already set
+  up, single-threaded so it works in Safari). Upload the `build/web` folder to
+  [itch.io](https://itch.io) as an HTML5 game (it can be private), open the link
+  on your iPhone, then **Share → Add to Home Screen** to get an app icon.
+- *With a Mac:* install Xcode, set your Apple Team ID in the iOS preset, export,
+  open the generated Xcode project and run it on your phone (a free Apple ID
+  works for 7 days at a time; TestFlight/App Store needs the $99/year program).
+
+## What Layer 6 adds
+
+- **Title screen** (Continue, New game, How to play, Settings) and an in-game
+  **Menu** (save, load, steward, chronicle, settings, main menu).
+- **Save & load** as JSON snapshots in the app's user folder, plus an
+  **autosave every in-game year** and when you leave to the main menu.
+- **Tutorial**: eight steps that walk you through your first minutes and advance
+  as you do each thing (replay it from the title screen).
+- **Sound**: clicks, bells, war horns, sword clashes, a funeral toll and a looping
+  lute-and-drone tune, all synthesised in code (no audio files needed).
+- **Heraldry**: every realm gets a coat of arms (field, division, charge) shown
+  on its army banners and beside the names of great realms.
+- **Parchment art pass**: age spots, a compass rose and a title cartouche.
+- **Phone-ready**: text/button size setting (Normal / Large / Huge), notch-safe
+  margins, landscape lock, and export presets for Android, iOS and Web.
 
 ## What Layer 1 does
 
@@ -171,11 +215,11 @@ Phone/tablet: one finger pans, two fingers pinch-zoom, tap to select.
 Tuning knobs are constants at the top of `sim/world.gd` (day length, terrain,
 aggression, truces) and `sim/economy.gd` (yields, food, upkeep, taxes, recruit costs).
 
-## Exporting to phones
+## Exporting
 
-In **Project → Export**, add the Android/iOS preset and under *Resources* set
-**Filters to export non-resource files** to `data/*.json`, or the game won't find
-its map data. iOS builds need a Mac with Xcode.
+The presets in `export_presets.cfg` already include `data/*.json` (the game's
+map and content). If you make a new preset, add `data/*.json` under
+*Resources → Filters to export non-resource files*, or the game won't start.
 
 ## Roadmap
 
@@ -184,6 +228,7 @@ its map data. iOS builds need a Mac with Xcode.
 3. ~~Layer 3 — Battles~~
 4. ~~Layer 4 — Diplomacy, religion, crusades~~
 5. ~~Layer 5 — Dynasty & drama~~
-6. Layer 6 — Polish & phone builds
+6. ~~Layer 6 — Polish & phone builds~~
 
-Not yet: save/load, real province shapes, sound, art pass.
+Next ideas: real province shapes from public map data, naval battles (an open
+question in the design doc), recorded music and art, balance tuning from play.

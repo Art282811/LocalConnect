@@ -14,6 +14,15 @@ signal map_mode_pressed
 signal dynasty_pressed
 signal continue_pressed
 signal event_closed
+signal clicked
+signal play_pressed
+signal continue_game_pressed
+signal save_pressed
+signal load_pressed
+signal main_menu_pressed
+signal settings_changed
+signal tutorial_next
+signal tutorial_skip
 
 const SPEEDS := [0.0, 0.25, 1.0, 2.0, 4.0]
 
@@ -48,6 +57,14 @@ var spawn_panel: PanelContainer
 var log_panel: PanelContainer
 var log_text: RichTextLabel
 var over_panel: PanelContainer
+var root_control: Control
+var title_panel: PanelContainer
+var title_continue: Button
+var menu_panel: PanelContainer
+var settings_panel: PanelContainer
+var settings_box: VBoxContainer
+var tutorial_panel: PanelContainer
+var tutorial_text: RichTextLabel
 
 
 func _ready() -> void:
@@ -56,6 +73,7 @@ func _ready() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.theme = _make_theme()
 	add_child(root)
+	root_control = root
 
 	_build_top_bar(root)
 	_build_feed(root)
@@ -64,6 +82,12 @@ func _ready() -> void:
 	_build_log(root)
 	_build_game_over(root)
 	_build_event(root)
+	_build_menu(root)
+	_build_settings(root)
+	_build_tutorial(root)
+	_build_title(root)
+	apply_safe_area()
+	get_viewport().size_changed.connect(apply_safe_area)
 
 
 func _make_theme() -> Theme:
@@ -112,6 +136,7 @@ func _make_theme() -> Theme:
 func _button(text: String, parent: Control) -> Button:
 	var b := Button.new()
 	b.text = text
+	b.pressed.connect(func() -> void: clicked.emit())
 	b.custom_minimum_size = Vector2(52, 44)
 	parent.add_child(b)
 	return b
@@ -155,16 +180,11 @@ func _build_top_bar(root: Control) -> void:
 	dynasty_button.pressed.connect(func() -> void: dynasty_pressed.emit())
 	dynasty_button.visible = false
 
-	steward_button = _button("Auto", row)
-	steward_button.toggle_mode = true
-	steward_button.tooltip_text = "Let the AI run your realm's wars and armies"
-	steward_button.toggled.connect(func(on: bool) -> void: steward_toggled.emit(on))
 
 	map_mode_button = _button("Map: Realms", row)
 	map_mode_button.pressed.connect(func() -> void: map_mode_pressed.emit())
 
-	var log_btn := _button("Log", row)
-	log_btn.pressed.connect(_toggle_log)
+	_button("Menu", row).pressed.connect(func() -> void: menu_panel.visible = not menu_panel.visible)
 
 	resource_panel = PanelContainer.new()
 	resource_panel.position = Vector2(10, 66)
@@ -354,6 +374,197 @@ func _on_event_option(cb: Callable) -> void:
 
 func is_event_open() -> bool:
 	return event_panel.visible
+
+
+# --- Layer 6: title screen, menu, settings, tutorial -------------------------------------------
+
+func _centered_panel(root: Control) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	panel.visible = false
+	root.add_child(panel)
+	return panel
+
+
+func _build_title(root: Control) -> void:
+	title_panel = _centered_panel(root)
+	var col := VBoxContainer.new()
+	col.custom_minimum_size.x = 420
+	col.add_theme_constant_override("separation", 10)
+	title_panel.add_child(col)
+	var title := Label.new()
+	title.text = "Crusader Kingdoms"
+	title.add_theme_font_size_override("font_size", 44)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(title)
+	var sub := Label.new()
+	sub.text = "Found a realm. Raise a dynasty. Keep it alive."
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(sub)
+	title_continue = _button("Continue", col)
+	title_continue.pressed.connect(func() -> void: continue_game_pressed.emit())
+	_button("New game", col).pressed.connect(func() -> void: play_pressed.emit())
+	_button("How to play (tutorial)", col).pressed.connect(_on_tutorial_reset)
+	_button("Settings", col).pressed.connect(_open_settings)
+
+
+func show_title(can_continue: bool) -> void:
+	title_continue.visible = can_continue
+	title_panel.visible = true
+	spawn_panel.visible = false
+	title_panel.reset_size()
+
+
+func hide_title() -> void:
+	title_panel.visible = false
+
+
+func _on_tutorial_reset() -> void:
+	Settings.tutorial_done = false
+	Settings.save_settings()
+	play_pressed.emit()
+
+
+func _build_menu(root: Control) -> void:
+	menu_panel = _centered_panel(root)
+	var col := VBoxContainer.new()
+	col.custom_minimum_size.x = 340
+	menu_panel.add_child(col)
+	var title := Label.new()
+	title.text = "Menu"
+	title.add_theme_font_size_override("font_size", 26)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(title)
+	_button("Save game", col).pressed.connect(func() -> void:
+		menu_panel.visible = false
+		save_pressed.emit()
+	)
+	_button("Load game", col).pressed.connect(func() -> void:
+		menu_panel.visible = false
+		load_pressed.emit()
+	)
+	steward_button = _button("Steward: AI runs your realm", col)
+	steward_button.toggle_mode = true
+	steward_button.toggled.connect(func(on: bool) -> void: steward_toggled.emit(on))
+	_button("Chronicle", col).pressed.connect(func() -> void:
+		menu_panel.visible = false
+		_toggle_log()
+	)
+	_button("Settings", col).pressed.connect(func() -> void:
+		menu_panel.visible = false
+		_open_settings()
+	)
+	_button("Main menu", col).pressed.connect(func() -> void:
+		menu_panel.visible = false
+		main_menu_pressed.emit()
+	)
+	_button("Close", col).pressed.connect(func() -> void: menu_panel.visible = false)
+
+
+func _build_settings(root: Control) -> void:
+	settings_panel = _centered_panel(root)
+	settings_box = VBoxContainer.new()
+	settings_box.custom_minimum_size.x = 360
+	settings_panel.add_child(settings_box)
+
+
+func _open_settings() -> void:
+	for c in settings_box.get_children():
+		settings_box.remove_child(c)
+		c.queue_free()
+	var title := Label.new()
+	title.text = "Settings"
+	title.add_theme_font_size_override("font_size", 26)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	settings_box.add_child(title)
+	_button("Music: %s" % ("on" if Settings.music else "off"), settings_box).pressed.connect(func() -> void:
+		Settings.music = not Settings.music
+		_settings_saved()
+	)
+	_button("Sound effects: %s" % ("on" if Settings.sfx else "off"), settings_box).pressed.connect(func() -> void:
+		Settings.sfx = not Settings.sfx
+		_settings_saved()
+	)
+	_button("Text and buttons: %s" % Settings.UI_SCALE_NAMES[Settings.ui_scale_index], settings_box).pressed.connect(func() -> void:
+		Settings.ui_scale_index = (Settings.ui_scale_index + 1) % Settings.UI_SCALES.size()
+		_settings_saved()
+	)
+	_button("Autosave every year: %s" % ("on" if Settings.autosave else "off"), settings_box).pressed.connect(func() -> void:
+		Settings.autosave = not Settings.autosave
+		_settings_saved()
+	)
+	_button("Close", settings_box).pressed.connect(func() -> void: settings_panel.visible = false)
+	settings_panel.visible = true
+	settings_panel.reset_size()
+
+
+func _settings_saved() -> void:
+	Settings.save_settings()
+	settings_changed.emit()
+	_open_settings.call_deferred()
+
+
+func _build_tutorial(root: Control) -> void:
+	tutorial_panel = PanelContainer.new()
+	tutorial_panel.anchor_left = 1.0
+	tutorial_panel.anchor_right = 1.0
+	tutorial_panel.anchor_top = 1.0
+	tutorial_panel.anchor_bottom = 1.0
+	tutorial_panel.offset_left = -400
+	tutorial_panel.offset_right = -10
+	tutorial_panel.offset_top = -10
+	tutorial_panel.offset_bottom = -10
+	tutorial_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	tutorial_panel.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.98, 0.93, 0.72, 0.97)
+	style.border_color = Color(0.6, 0.12, 0.08)
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(12)
+	tutorial_panel.add_theme_stylebox_override("panel", style)
+	root.add_child(tutorial_panel)
+	var col := VBoxContainer.new()
+	tutorial_panel.add_child(col)
+	tutorial_text = RichTextLabel.new()
+	tutorial_text.bbcode_enabled = true
+	tutorial_text.fit_content = true
+	tutorial_text.scroll_active = false
+	tutorial_text.custom_minimum_size.x = 370
+	col.add_child(tutorial_text)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	col.add_child(row)
+	_button("Skip tutorial", row).pressed.connect(func() -> void: tutorial_skip.emit())
+	_button("Next", row).pressed.connect(func() -> void: tutorial_next.emit())
+
+
+func show_tutorial(text: String) -> void:
+	if text == "":
+		tutorial_panel.visible = false
+		return
+	if tutorial_text.text != text:
+		tutorial_text.text = text
+		tutorial_panel.reset_size()
+	tutorial_panel.visible = true
+
+
+## Keep the HUD clear of notches and rounded corners on phones.
+func apply_safe_area() -> void:
+	if root_control == null or not OS.has_feature("mobile"):
+		return
+	var window := DisplayServer.window_get_size()
+	var safe := DisplayServer.get_display_safe_area()
+	var view := get_viewport().get_visible_rect().size
+	if window.x <= 0 or window.y <= 0 or safe.size.x <= 0:
+		return
+	var k := view / Vector2(window)
+	root_control.offset_left = safe.position.x * k.x
+	root_control.offset_top = safe.position.y * k.y
+	root_control.offset_right = -maxf(window.x - safe.end.x, 0) * k.x
+	root_control.offset_bottom = -maxf(window.y - safe.end.y, 0) * k.y
 
 
 func _on_rise_again() -> void:

@@ -106,6 +106,7 @@ func _draw() -> void:
 			closed.append(piece[0])
 			draw_polyline(closed, Color(1.0, 0.85, 0.3), _w(3.0), true)
 
+	_draw_cartography(size)
 	_draw_frame(size)
 
 
@@ -134,6 +135,43 @@ func _fill_for(p: Province) -> Color:
 	if r.liege != -1 and world.realms[r.liege].alive:
 		rc = rc.lerp(world.realms[r.liege].color(), 0.45)
 	return base.lerp(rc, 0.7)
+
+
+## Age spots on the parchment, a compass rose and a title cartouche.
+func _draw_cartography(size: Vector2) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1187
+	for i in 140:
+		var at := Vector2(rng.randf() * size.x, rng.randf() * size.y)
+		draw_circle(at, rng.randf_range(20.0, 120.0), Color(0.45, 0.32, 0.15, 0.035))
+	var font := ThemeDB.fallback_font
+	# Compass rose in the North Atlantic.
+	var c := Vector2(150, 360)
+	var points := PackedVector2Array()
+	for i in 16:
+		var ang := -PI / 2.0 + i * PI / 8.0
+		var rad := 70.0 if i % 4 == 0 else (40.0 if i % 2 == 0 else 22.0)
+		points.append(c + Vector2(cos(ang), sin(ang)) * rad)
+	draw_colored_polygon(points, Color(0.9, 0.84, 0.68))
+	var outline := points.duplicate()
+	outline.append(points[0])
+	draw_polyline(outline, INK, 2.0, true)
+	for i in 4:
+		var ang := -PI / 2.0 + i * PI / 2.0
+		draw_line(c, c + Vector2(cos(ang), sin(ang)) * 70.0, INK, 1.5)
+	draw_circle(c, 8.0, Color(0.7, 0.15, 0.1))
+	draw_arc(c, 28.0, 0, TAU, 40, INK, 1.5, true)
+	draw_string(font, c + Vector2(-9, -78), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, INK)
+	# Title cartouche.
+	var box := Rect2(Vector2(40, 40), Vector2(420, 110))
+	draw_rect(box, Color(0.93, 0.87, 0.7))
+	draw_rect(box, INK, false, 4.0)
+	draw_rect(box.grow(-10), INK, false, 1.5)
+	for corner in [box.position, box.position + Vector2(box.size.x, 0), box.position + Vector2(0, box.size.y), box.end]:
+		draw_circle(corner, 12.0, Color(0.7, 0.15, 0.1))
+		draw_arc(corner, 12.0, 0, TAU, 20, INK, 2.0)
+	draw_string(font, box.position + Vector2(0, 62), "EUROPA ET ORIENS", HORIZONTAL_ALIGNMENT_CENTER, box.size.x, 40, INK)
+	draw_string(font, box.position + Vector2(0, 92), "the known world", HORIZONTAL_ALIGNMENT_CENTER, box.size.x, 22, Color(INK, 0.7))
 
 
 func _draw_frame(size: Vector2) -> void:
