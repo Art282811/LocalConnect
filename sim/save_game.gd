@@ -28,7 +28,7 @@ static func newest() -> String:
 
 static func save(w: World, path: String = SLOT) -> bool:
 	var d := {
-		"version": VERSION, "seed": w.world_seed, "rng": str(w.rng.state), "day": w.day,
+		"version": VERSION, "seed": w.world_seed, "year_days": World.DAYS_PER_YEAR, "rng": str(w.rng.state), "day": w.day,
 		"player_realm": w.player_realm, "auto_rule": w.auto_rule,
 		"next_army": w._next_army_id, "next_battle": w._next_battle_id,
 		"news": w.news_log.slice(maxi(w.news_log.size() - 120, 0)),
@@ -36,6 +36,7 @@ static func save(w: World, path: String = SLOT) -> bool:
 		"provinces": [], "realms": [], "armies": [], "people": [],
 		"treaties": w.diplomacy.treaties, "routes": w.diplomacy.routes, "offers": w.diplomacy.offers,
 		"cooldown": w.diplomacy._cooldown, "next_offer": w.diplomacy._next_offer,
+		"grand_routes": w.trade.routes, "next_route": w.trade._next,
 		"head_mem": w.religion.head_mem, "crusades": w.religion.crusades, "next_crusade": w.religion._next_crusade,
 	}
 	for p: Province in w.provinces:
@@ -81,6 +82,7 @@ static func load_world(path: String = SLOT) -> World:
 		push_error("Save file is damaged: %s" % path)
 		return null
 	var d: Dictionary = _fix(parsed)
+	World.set_year_length(int(d.get("year_days", 360)))
 	var w := World.new()
 	w.setup(int(d["seed"]))
 	w.day = int(d["day"])
@@ -141,6 +143,10 @@ static func load_world(path: String = SLOT) -> World:
 	for c in d.get("crusades", []):
 		w.religion.crusades.append(c)
 	w.religion._next_crusade = int(d.get("next_crusade", 0))
+	w.trade.routes.clear()
+	for gr in d.get("grand_routes", []):
+		w.trade.routes.append(gr)
+	w.trade._next = int(d.get("next_route", 0))
 	for p: Province in w.provinces:
 		w.refresh_fort(p)
 	return w

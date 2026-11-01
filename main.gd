@@ -16,7 +16,8 @@ var selected_army := -1
 var _info_kind := ""   # "", "province", "army", "build", "realm", "battle"
 var selected_battle := -1
 var selected_regiment := -1
-var _pending := ""      # "raid" or "join": the next tap picks the target
+var _pending := ""      # "raid", "join" or "route": the next tap picks the target
+var _route_from := -1
 var _alert_index := 0
 var _diplo_target := -1
 var _mode_timer := 0.0
@@ -92,6 +93,7 @@ func _ready() -> void:
 
 
 func _new_world(seed_value: int) -> void:
+	World.set_year_length(Settings.year_days())
 	var w := World.new()
 	w.setup(seed_value)
 	_attach(w)
@@ -270,6 +272,8 @@ func _refresh_hud() -> void:
 			hud.update_info_body(_diplomacy_text(_diplo_target))
 	elif _info_kind == "dynasty" and world.player_realm != -1:
 		hud.update_info_body(_dynasty_text(world.realms[world.player_realm]))
+	elif _info_kind == "routes" and world.player_realm != -1:
+		hud.update_info_body(_routes_text())
 	elif _info_kind == "crusades":
 		hud.update_info_body(_crusades_text())
 	elif _info_kind == "realm":
@@ -302,6 +306,7 @@ func _clear_selection() -> void:
 	selected_battle = -1
 	selected_regiment = -1
 	_pending = ""
+	_route_from = -1
 	_info_kind = ""
 	if battle_view != null:
 		battle_view.selected_battle = -1
@@ -327,6 +332,10 @@ func _on_tap(world_pos: Vector2, screen_pos: Vector2) -> void:
 				return
 
 	var army_id := _army_at(screen_pos)
+	if _pending == "route" and _route_from != -1:
+		if pid != -1:
+			_show_route_plan(_route_from, pid)
+		return
 	if _pending == "join" and selected_army != -1:
 		if army_id != -1 and army_id != selected_army:
 			world.join_army(selected_army, army_id)
@@ -450,6 +459,10 @@ func _army_actions(a: Army) -> Array:
 	if p.owner != -1 and world.at_war(a.realm, p.owner) and a.path.is_empty():
 		actions.append(["Assault walls (garrison ~%d)" % int(world.garrison_size(p)), _act_assault.bind(a.id)])
 	actions.append(["Halt", _act_halt.bind(a.id)])
+	for route in world.trade.routes:
+		if int(route["owner"]) == a.realm:
+			var guarding: bool = a.order == "patrol" and a.join_target == int(route["id"])
+			actions.append(["Patrol the %s" % route["name"] if not guarding else "Patrolling the %s" % route["name"], _act_patrol.bind(a.id, int(route["id"])), not guarding])
 	var r := world.realms[a.realm]
 	if a.hero != r.ruler:
 		actions.append(["Lead it yourself", _act_lead.bind(a.id)])
@@ -508,7 +521,7 @@ func _army_text(a: Army) -> String:
 	var task_names := {
 		"idle": "Waiting for orders", "claim": "Claiming land", "siege": "Besieging",
 		"attack": "Marching to war", "defend": "Defending", "retreat": "Retreating",
-		"return": "Returning home", "order": "Marching on your orders", "hold": "Holding",
+		"return": "Returning home", "order": "Marching on your orders", "hold": "Holding", "patrol": "Patrolling a trade road",
 		"raid": "Raiding",
 	}
 	var text := "Lord [b]%s[/b] of %s · %s general, skill %d\n" % [a.general, r.name, a.general_trait, a.skill]
@@ -684,6 +697,8 @@ func _show_province(pid: int) -> void:
 		var r := world.realms[p.owner]
 		var eco := world.economy
 		actions.append(["Build…", _show_build_menu.bind(pid), p.build_id == ""])
+		if world.trade.is_hub(p):
+			actions.append(["Start a trade route here", _act_route_start.bind(pid)])
 		var levy := eco.levy_problem(r, p)
 		actions.append(["Raise levy (%d men, %dg)" % [Economy.LEVY_SIZE, int(Economy.LEVY_GOLD)] if levy == "" else "Levy: " + levy, _act_levy.bind(pid), levy == ""])
 		if p.faith != r.faith:
@@ -728,7 +743,7 @@ func _show_build_menu(pid: int) -> void:
 	var actions: Array = []
 	for id in eco.order:
 		var reason := eco.why_not(p, id)
-		if reason in ["Fully built", "Wrong terrain", "Needs a coast"]:
+		if reason in ["Fully built", "Wrong terrain", "Needs a coast", "No river here"]:
 			continue
 		var next := p.building_level(id) + 1
 		var label := "%s · %s" % [eco.building_name(id, next), _short_cost(eco.cost_of(id, next))]
@@ -745,7 +760,7 @@ func _build_text(pid: int) -> String:
 		text += " · building %s, %d days left" % [eco.building_name(p.build_id, p.building_level(p.build_id) + 1), ceili(p.build_left)]
 	for id in eco.order:
 		var reason := eco.why_not(p, id)
-		if reason in ["Wrong terrain", "Needs a coast"]:
+		if reason in ["Wrong terrain", "Needs a coast", "No river here"]:
 			continue
 		var next := p.building_level(id) + 1
 		var line := "\n[b]%s[/b]: %s" % [eco.building_name(id, mini(next, int(eco.defs[id]["max"]))), eco.defs[id]["desc"]]
@@ -799,6 +814,7 @@ func _show_realm() -> void:
 		actions.append(["Donate to the %s (%dg)" % [title, int(Religion.DONATION)], _act_donate, float(r.res["gold"]) >= Religion.DONATION])
 	actions.append(["Offers (%d)" % world.diplomacy.offers.size(), _show_offers, not world.diplomacy.offers.is_empty()])
 	actions.append(["Holy wars (%d)" % world.religion.crusades.size(), _show_crusades])
+	actions.append(["Trade routes…", _show_routes])
 	hud.show_info(r.full_name(), _realm_text(r), actions)
 
 
@@ -1453,6 +1469,139 @@ func _tutorial_finish() -> void:
 	hud.show_tutorial("")
 	Settings.tutorial_done = true
 	Settings.save_settings()
+
+
+# --- Trade routes -----------------------------------------------------------------------------
+
+func _act_route_start(pid: int) -> void:
+	_clear_selection()
+	_pending = "route"
+	_route_from = pid
+	_info_kind = "route_pick"
+	hud.show_info("A new trade route from %s" % world.provinces[pid].name,
+		"Tap the market or port at the other end: one of yours, an ally's or a trade partner's.\nLonger routes and rarer goods (silk!) earn more, but every province is a place bandits can strike.",
+		[["Cancel", _cancel_pending]])
+
+
+func _cancel_pending() -> void:
+	_clear_selection()
+	hud.hide_info()
+
+
+func _show_route_plan(from: int, to: int) -> void:
+	var me := world.player_realm
+	var plan := world.trade.plan(me, from, to)
+	_pending = ""
+	if not plan[0]:
+		hud.show_info("No route", str(plan[1]) + "\n\nTap another town, or cancel.", [["Cancel", _cancel_pending]])
+		_pending = "route"
+		_route_from = from
+		return
+	var path: Array = plan[2]
+	var route := {"owner": me, "path": path, "open": true}
+	var unsafe := 0
+	for pid in path:
+		if world.trade.stretch_risk(route, int(pid)) >= 0.05:
+			unsafe += 1
+	var text := "[b]%s[/b]: %s\n" % [plan[5], plan[6]]
+	text += "%d provinces from %s to %s\n" % [path.size(), world.provinces[from].name, world.provinces[to].name]
+	text += "Costs [b]%d gold[/b] to found; earns about [b]%.1f gold a day[/b] (you keep %d%%; allies on the road share it; lands it crosses take a toll).\n" % [int(plan[3]), float(plan[4]) * TradeNetwork.OWNER_SHARE, int(TradeNetwork.OWNER_SHARE * 100)]
+	text += "%d stretches are unguarded: station troops nearby or build watchtowers." % unsafe
+	hud.show_info("Found a trade route?", text, [["Found it", _act_route_found.bind(from, to)], ["Cancel", _cancel_pending]])
+
+
+func _act_route_found(from: int, to: int) -> void:
+	var msg := world.trade.found(world.player_realm, from, to)
+	_clear_selection()
+	if msg != "":
+		hud.add_news(msg)
+	_show_routes()
+
+
+func _show_routes() -> void:
+	_clear_selection()
+	_info_kind = "routes"
+	var actions: Array = []
+	for route in world.trade.routes:
+		if int(route["owner"]) != world.player_realm:
+			continue
+		var rid := int(route["id"])
+		actions.append(["%s: %s" % [route["name"], "open to allies" if route["open"] else "private"], _act_route_access.bind(rid)])
+		actions.append(["Guard %s" % route["name"], _act_route_guard.bind(rid)])
+		actions.append(["Abandon %s" % route["name"], _act_route_abandon.bind(rid)])
+	actions.append(["Back", _show_realm])
+	hud.show_info("Trade routes", _routes_text(), actions)
+
+
+func _routes_text() -> String:
+	var me := world.player_realm
+	var tr := world.trade
+	var text := ""
+	for route in tr.routes:
+		var owner := int(route["owner"])
+		var share := float(tr.payouts(route).get(me, 0.0))
+		if owner != me and share <= 0.0:
+			continue
+		var status := str(route["status"])
+		text += "[b]%s[/b] (%s), %d provinces" % [route["name"], route["goods"], (route["path"] as Array).size()]
+		if owner != me:
+			text += " · owned by %s" % world.realms[owner].name
+		text += "\n"
+		if status == "active":
+			text += "  Earning you %.1f gold a day · bandit risk %d%% a month" % [share, int(tr.risk(route) * 100)]
+		elif status == "raided":
+			text += "  [color=#9a2a1a]Plundered by bandits; caravans resume in %d days[/color]" % (int(route["cut_until"]) - world.day)
+		else:
+			text += "  [color=#9a2a1a]Closed: %s[/color]" % route["blocker"]
+		if owner == me:
+			var weak := PackedStringArray()
+			for pid in tr.weak_points(route, 3):
+				weak.append(world.provinces[pid].name)
+			if not weak.is_empty():
+				text += "\n  Unguarded: %s" % ", ".join(weak)
+		text += "\n\n"
+	if text == "":
+		text = "You have no great trade routes yet. Build a market or port, tap that province and choose [b]Start a trade route here[/b].\n\n"
+	text += "[i]Troops standing on or next to a stretch keep bandits away. Watchtowers and caravanserais help. Enemy armies on the road close it and plunder it.[/i]"
+	return text
+
+
+func _act_route_access(route_id: int) -> void:
+	var route := world.trade.route_by_id(route_id)
+	if not route.is_empty():
+		route["open"] = not route["open"]
+	_show_routes()
+
+
+## Send the nearest idle army to patrol the route.
+func _act_route_guard(route_id: int) -> void:
+	var route := world.trade.route_by_id(route_id)
+	if route.is_empty():
+		return
+	var start := world.provinces[int((route["path"] as Array)[0])].center
+	var best: Army = null
+	for a: Army in world.armies_of(world.player_realm):
+		if a.battle != -1 or a.order == "patrol":
+			continue
+		if best == null or world.provinces[a.province].center.distance_to(start) < world.provinces[best.province].center.distance_to(start):
+			best = a
+	if best == null:
+		hud.add_news("You have no free army to guard the road.")
+	elif world.trade.assign_patrol(best, route_id):
+		hud.add_news("Lord %s rides out to patrol the %s." % [best.general, route["name"]])
+	_show_routes()
+
+
+func _act_route_abandon(route_id: int) -> void:
+	world.trade.abandon(route_id)
+	_show_routes()
+
+
+func _act_patrol(army_id: int, route_id: int) -> void:
+	var a := world.army_by_id(army_id)
+	if a != null and world.trade.assign_patrol(a, route_id):
+		hud.add_news("Lord %s will patrol the road." % a.general)
+	_select_army(army_id)
 
 
 func _act_go_capital() -> void:

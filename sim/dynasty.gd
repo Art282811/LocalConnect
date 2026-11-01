@@ -40,7 +40,7 @@ func make_person(realm_id: int, culture: String, house: String, female: bool, ag
 	c.house = house
 	c.realm = realm_id
 	c.role = role
-	c.born = world.day - age_years * 360 - _rng().randi_range(0, 359)
+	c.born = world.day - age_years * World.DAYS_PER_YEAR - _rng().randi_range(0, World.DAYS_PER_YEAR - 1)
 	c.personality = World.PERSONALITIES[_rng().randi() % World.PERSONALITIES.size()]
 	c.martial = _rng().randi_range(2, 8)
 	c.stewardship = _rng().randi_range(2, 8)
@@ -268,6 +268,7 @@ func monthly() -> void:
 			p = 0.005
 		elif age >= 40:
 			p = 0.002
+		p *= 360.0 / World.DAYS_PER_YEAR   # same odds per year whatever the pace
 		if c.health < 1.0:
 			p *= 3.0
 			c.health = minf(c.health + _rng().randf_range(-0.05, 0.12), 1.0)
@@ -279,7 +280,7 @@ func monthly() -> void:
 			_nobles_month(r)
 			_prisoners_month(r)
 			_maybe_event(r)
-	if today % 360 == 0:
+	if today % World.DAYS_PER_YEAR == 0:
 		_arrange_marriages()
 
 
@@ -296,7 +297,7 @@ func _births() -> void:
 		var r := world.realms[c.realm]
 		if not r.alive:
 			continue
-		if _rng().randf() < 0.025:
+		if _rng().randf() < 0.025 * 360.0 / World.DAYS_PER_YEAR:
 			var baby := _child(c, husband, r.id, 0)
 			if r.is_player:
 				world.post_news("A %s is born to %s: %s." % ["daughter" if baby.female else "son", r.house, baby.name], 1)

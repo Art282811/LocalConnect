@@ -112,7 +112,7 @@ func _build_terrain(p: Province) -> void:
 			var closest := Geometry2D.get_closest_point_to_segment(center, a, b)
 			if closest.distance_to(center) < radius:
 				river_segs.append([a, b])
-				if bridge == Vector2.INF or closest.distance_to(center) < bridge.distance_to(center):
+				if world.has_bridge(p) and (bridge == Vector2.INF or closest.distance_to(center) < bridge.distance_to(center)):
 					bridge = closest
 	var houses := 4 + p.level * 3
 	for i in houses:

@@ -36,6 +36,7 @@ var mission_faith: String = ""
 var holy_site: String = ""     # e.g. "Jerusalem"
 var sacred: Array = []         # faiths that hold the holy site sacred
 var fief: String = ""          # noble family it is granted to
+var river_point := Vector2.INF # where a river crosses (for bridges); INF = no river
 
 
 func building_level(id: String) -> int:

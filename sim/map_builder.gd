@@ -172,6 +172,7 @@ func build(rng: RandomNumberGenerator) -> void:
 
 	_link_neighbors(cells)
 	for p: Province in provinces:
+		p.river_point = _river_crossing(p)
 		p.terrain = _terrain_at(p.lonlat)
 		p.culture = _culture_at(p.lonlat)
 		p.glyphs = _glyph_points(p, rng)
@@ -230,6 +231,20 @@ func _land_segments(a: Vector2, b: Vector2) -> Array[PackedVector2Array]:
 	if not current.is_empty():
 		out.append(current)
 	return out
+
+
+## The point where a river passes closest to the settlement, if it runs through.
+func _river_crossing(p: Province) -> Vector2:
+	var best := Vector2.INF
+	var best_d := radius * 0.8
+	for river in rivers:
+		for i in river.size() - 1:
+			var q := Geometry2D.get_closest_point_to_segment(p.center, river[i], river[i + 1])
+			var d := q.distance_to(p.center)
+			if d < best_d:
+				best_d = d
+				best = q
+	return best
 
 
 func _terrain_at(ll: Vector2) -> String:

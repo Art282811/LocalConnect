@@ -36,6 +36,7 @@ func _draw() -> void:
 	var s := 1.0 / clampf(zoom, 0.3, 2.0)
 	if zoom >= 0.45:
 		_draw_trade(s)
+	_draw_grand_routes(s)
 	_draw_crusades(s)
 	_draw_occupations(s)
 	_draw_puffs(s)
@@ -90,6 +91,60 @@ func _draw_trade(s: float) -> void:
 			var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 			draw_string_outline(font, mid + Vector2(-w * 0.5, -8 * s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, int(3 * s), PAPER)
 			draw_string(font, mid + Vector2(-w * 0.5, -8 * s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.5, 0.35, 0.05))
+
+
+## Great trade routes: owned roads with camel caravans; red marks show
+## unguarded stretches where bandits may strike (for your own routes).
+func _draw_grand_routes(s: float) -> void:
+	for route in world.trade.routes:
+		var path: Array = route["path"]
+		if path.size() < 2:
+			continue
+		var owner := world.realms[int(route["owner"])]
+		var mine := owner.is_player
+		var active: bool = route["status"] == "active"
+		var col := owner.color().darkened(0.2) if active else Color(0.6, 0.15, 0.1, 0.8)
+		var pts := PackedVector2Array()
+		for pid in path:
+			pts.append(world.provinces[int(pid)].center)
+		var width := (5.0 if mine else 3.5) * s
+		for i in pts.size() - 1:
+			draw_line(pts[i], pts[i + 1], Color(0.95, 0.82, 0.4, 0.55), width * 1.8, true)
+			if active:
+				draw_line(pts[i], pts[i + 1], col, width * 0.6, true)
+			else:
+				draw_dashed_line(pts[i], pts[i + 1], col, width * 0.6, 8.0 * s)
+		if active:
+			for k in 2:
+				var total := pts.size() - 1
+				var f := fmod(_clock * 0.08 + k * 0.5 + float(route["id"]) * 0.21, 1.0) * total
+				var seg := mini(int(f), total - 1)
+				var at := pts[seg].lerp(pts[seg + 1], f - seg)
+				_camel(at, s)
+		if mine and zoom >= 0.6:
+			for pid in world.trade.weak_points(route, 3):
+				var p := world.provinces[pid]
+				if world.trade.stretch_risk(route, pid) >= 0.05:
+					draw_circle(p.center + Vector2(0, 26) * s, 7.0 * s, Color(0.75, 0.1, 0.08, 0.85))
+					draw_string(font, p.center + Vector2(-3, 31) * s, "!", HORIZONTAL_ALIGNMENT_LEFT, -1, int(14 * s), PAPER)
+		if zoom >= 0.8:
+			var mid := pts[pts.size() / 2]
+			var label := str(route["name"])
+			var fs := int(12.0 * s)
+			var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			draw_string_outline(font, mid + Vector2(-lw * 0.5, 18 * s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, int(3 * s), PAPER)
+			draw_string(font, mid + Vector2(-lw * 0.5, 18 * s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.45, 0.28, 0.05))
+
+
+func _camel(at: Vector2, s: float) -> void:
+	var camel_col := Color(0.72, 0.55, 0.32)
+	draw_rect(Rect2(at + Vector2(-5, -5) * s, Vector2(10, 4) * s), camel_col)
+	draw_circle(at + Vector2(-1, -6) * s, 2.2 * s, camel_col)
+	draw_line(at + Vector2(5, -4) * s, at + Vector2(8, -9) * s, camel_col, 2.0 * s)
+	draw_circle(at + Vector2(8.5, -9.5) * s, 1.5 * s, camel_col)
+	for x in [-4.0, -1.0, 2.0, 4.0]:
+		draw_line(at + Vector2(x, -1) * s, at + Vector2(x, 3) * s, INK, 1.0 * s)
+	draw_rect(Rect2(at + Vector2(-3, -9) * s, Vector2(5, 3) * s), Color(0.6, 0.2, 0.15))   # bundle of goods
 
 
 func _draw_crusades(s: float) -> void:

@@ -202,6 +202,41 @@ Phone/tablet: one finger pans, two fingers pinch-zoom, tap to select.
 - **You lose when your dynasty ends or is overthrown.** After a coup or a lost
   election you may **play on as the new house** — the design doc's open question.
 
+## Trade roads and infrastructure
+
+- **Found your own great trade routes.** Tap a province of yours with a market or
+  port → **Start a trade route here** → tap the town at the other end (yours, an
+  ally's or a trade partner's). You see the path, the founding cost and the
+  expected income before you commit. Longer routes and rarer goods pay more; a
+  route carrying silk across a long distance becomes a **Silk Road** (×1.5).
+- **You own it.** The founder keeps 70% of the profit. Allies can use it (each
+  gets a share, and their traffic raises the route's value), or set it to
+  **private**. Realms it passes through take a small toll. Caravans may only
+  cross your own land, allies', vassals', trade partners' or unclaimed wilds.
+- **Protect it with troops.** Every province on the road is a place bandits can
+  strike. Armies standing on or next to a stretch keep it safe; tap your army →
+  **Patrol the …** (or Realm → Trade routes → **Guard**) and it walks the road,
+  heading for the weakest stretch. Watchtowers and caravanserais help. Red **!**
+  marks show your unguarded stretches. An enemy army standing on the road closes
+  it and plunders the profit; the AI values provinces on its rivals' roads as
+  war targets, and guards its own roads with spare armies.
+- **Build the kingdom's infrastructure.** Roads appear on the map only where you
+  build them (dirt roads, then paved stone roads: 25% / 40% faster for armies
+  and caravans). Rivers slow armies unless the province has a **bridge** (towns
+  and cities have one; elsewhere you build it), and only a built bridge exists
+  to fight over in battle. Construction shows on the map as scaffolding with a
+  progress bar.
+- Trade agreements still open a small merchant route between partners as before.
+
+## Pace of life
+
+A day still passes every 1.5 s at 1x, so marching and building feel brisk, but a
+**year now lasts 720 days** (seasons of 180), so people age half as fast:
+about **18 minutes per year at 1x, 4½ minutes at 4x**. A 25-year reign is
+roughly 7½ hours at 1x or under 2 hours at 4x. Realms you found yourself start
+with a young ruler (18–26). Settings → **Pace of life** offers Brisk (the old
+360-day year), Normal, or Epic (1080 days); it applies to new games.
+
 ## How the AI thinks
 
 Every AI realm keeps a strategic "mind" (`sim/strategy.gd`), re-assessed monthly:
@@ -247,7 +282,7 @@ Tuning knobs are constants at the top of `sim/strategy.gd`.
 | Folder | What's in it |
 | --- | --- |
 | `data/` | `world.json` (coastlines, seas, terrain zones, rivers, cultures), `realms.json` (starting realms), `buildings.json` (costs, limits, effects), `religions.json` (faiths, holy sites, relics), `names.json` (name syllables). Edit these to tweak content. |
-| `sim/` | The simulation, separate from visuals: `world.gd` (clock, AI, wars, sieges, rebellions), `economy.gd` (resources, buildings, people, taxes, happiness, recruiting), `battle.gd` + `regiment.gd` (tactical battles), `diplomacy.gd` (opinion, treaties, trade), `religion.gd` (faiths, heads, crusades), `dynasty.gd` + `character.gd` (people, succession, nobles, events), `strategy.gd` (AI strategy), `save_game.gd` (save/load), `map_builder.gd` (provinces from the outline), `province.gd`, `realm.gd`, `army.gd`, `names.gd`. |
+| `sim/` | The simulation, separate from visuals: `world.gd` (clock, AI, wars, sieges, rebellions), `economy.gd` (resources, buildings, people, taxes, happiness, recruiting), `battle.gd` + `regiment.gd` (tactical battles), `diplomacy.gd` (opinion, treaties, trade), `religion.gd` (faiths, heads, crusades), `dynasty.gd` + `character.gd` (people, succession, nobles, events), `strategy.gd` (AI strategy), `trade.gd` (great trade routes), `save_game.gd` (save/load), `map_builder.gd` (provinces from the outline), `province.gd`, `realm.gd`, `army.gd`, `names.gd`. |
 | `map/` | `map_view.gd` (parchment map), `labels_view.gd` (names, settlements, roads), `overlay_view.gd` (armies, sieges, battle smoke), `battle_view.gd` (battle blocks and soldiers), `camera_rig.gd` (pan/zoom/pinch). |
 | `ui/` | `hud.gd` — top bar, news feed, info panel, spawn prompt, chronicle. |
 | `main.gd` | Wires it together and handles taps/selection. |

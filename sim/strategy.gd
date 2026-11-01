@@ -207,6 +207,10 @@ func province_value(r: Realm, p: Province) -> float:
 		v += 0.6
 	if p.faith == r.faith:
 		v += 0.6
+	# Trade roads: secure our own, cut our rivals'.
+	for route in world.trade.routes:
+		if (route["path"] as Array).has(p.id) or (route["path"] as Array).has(float(p.id)):
+			v += 2.0 if int(route["owner"]) == r.id else 1.0
 	return v
 
 
@@ -386,7 +390,7 @@ func _ready(r: Realm, m: Dictionary, chance: float) -> bool:
 	if world.day - int(m["since"]) < MIN_PREP_DAYS:
 		return false
 	var season := world.season()
-	if season == 3 or (season == 2 and world.day % World.DAYS_PER_SEASON > 45):
+	if season == 3 or (season == 2 and world.day % World.DAYS_PER_SEASON > World.DAYS_PER_SEASON / 2):
 		return false   # no campaigns into winter
 	if chance < float(NERVE.get(r.personality, 0.6)):
 		return false
@@ -430,6 +434,11 @@ func _move(a: Army, pid: int, task: String) -> bool:
 
 
 func command_armies(r: Realm) -> void:
+	if not r.enemies.is_empty() and not r.is_player:
+		for a: Army in world.armies_of(r.id):
+			if a.order == "patrol":
+				a.order = ""
+				a.manual = false   # war comes first; caravans can wait
 	var mine: Array[Army] = []
 	for a: Army in world.armies_of(r.id):
 		if a.battle == -1 and not a.manual and a.path.is_empty():
@@ -464,8 +473,23 @@ func command_armies(r: Realm) -> void:
 		var post := _guard_post(r, int(m["top_threat"]))
 		if guard in mine and post != -1 and guard.province != post:
 			_move(guard, post, "guard")
+	# Guard our most threatened trade road with a spare army.
+	if not r.is_player and all_mine.size() >= 2:
+		var worst: Dictionary = {}
+		for route in world.trade.routes:
+			if int(route["owner"]) == r.id and world.trade.risk(route) >= 0.2 and (worst.is_empty() or world.trade.risk(route) > world.trade.risk(worst)):
+				worst = route
+		var patrolling := false
+		for a: Army in all_mine:
+			if a.order == "patrol":
+				patrolling = true
+		if not worst.is_empty() and not patrolling:
+			for a in mine:
+				if a != guard and a != main and not _busy(a):
+					world.trade.assign_patrol(a, int(worst["id"]))
+					break
 	for a in mine:
-		if a == guard or _busy(a):
+		if a == guard or _busy(a) or a.order == "patrol":
 			continue
 		if a.order == "hold":
 			a.order = ""   # stop digging in; peace has work to do

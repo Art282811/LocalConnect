@@ -1,18 +1,239 @@
 {
   "_comment": "Layer 2 buildings. Cost is for level 1 and multiplies by the level being built. Build days grow 50% per level. 'needs' limits where a building can go.",
   "buildings": [
-    { "id": "farm",        "name": "Farms",         "max": 3, "days": 30, "cost": { "gold": 25, "wood": 20 },               "desc": "+food, +room for people" },
-    { "id": "market",      "name": "Market",        "max": 3, "days": 40, "cost": { "gold": 45, "wood": 20, "stone": 10 },  "desc": "+30% tax gold", "needs": { "min_level": 2 } },
-    { "id": "barracks",    "name": "Barracks",      "max": 2, "days": 40, "cost": { "gold": 40, "wood": 30 },               "desc": "+manpower; lets you hire men-at-arms here" },
-    { "id": "blacksmith",  "name": "Blacksmith",    "max": 2, "days": 45, "cost": { "gold": 50, "stone": 20, "iron": 10 },  "desc": "Better-armed men-at-arms", "needs": { "requires": "barracks" } },
-    { "id": "walls",       "name": "Walls",         "max": 3, "days": 60, "cost": { "gold": 50, "wood": 40, "stone": 30 },  "desc": "Harder to siege", "levels": ["Palisade", "Stone walls", "Castle"] },
-    { "id": "church",      "name": "Church",        "max": 3, "days": 50, "cost": { "gold": 40, "stone": 30 },              "desc": "+faith, +happiness", "levels": ["Chapel", "Church", "Cathedral"] },
-    { "id": "granary",     "name": "Granary",       "max": 2, "days": 30, "cost": { "gold": 30, "wood": 30 },               "desc": "Softens winter, +room for people" },
-    { "id": "tavern",      "name": "Tavern",        "max": 2, "days": 25, "cost": { "gold": 30, "wood": 20 },               "desc": "+happiness (spies come later)" },
-    { "id": "lumber_camp", "name": "Lumber camp",   "max": 3, "days": 25, "cost": { "gold": 20 },                           "desc": "+wood", "needs": { "terrain": ["forest", "hills", "marsh", "plains"] } },
-    { "id": "quarry",      "name": "Quarry",        "max": 3, "days": 35, "cost": { "gold": 30, "wood": 20 },               "desc": "+stone", "needs": { "terrain": ["hills", "mountains", "desert"] } },
-    { "id": "mine",        "name": "Mine",          "max": 3, "days": 45, "cost": { "gold": 40, "wood": 30 },               "desc": "+iron", "needs": { "terrain": ["hills", "mountains"] } },
-    { "id": "port",        "name": "Port",          "max": 2, "days": 45, "cost": { "gold": 40, "wood": 40 },               "desc": "+gold from trade, +food from fishing", "needs": { "coastal": true } },
-    { "id": "road",        "name": "Roads",         "max": 1, "days": 30, "cost": { "gold": 20, "stone": 20 },              "desc": "Armies march here 30% faster; uses no slot", "free_slot": true }
+    {
+      "id": "farm",
+      "name": "Farms",
+      "max": 3,
+      "days": 30,
+      "cost": {
+        "gold": 25,
+        "wood": 20
+      },
+      "desc": "+food, +room for people"
+    },
+    {
+      "id": "market",
+      "name": "Market",
+      "max": 3,
+      "days": 40,
+      "cost": {
+        "gold": 45,
+        "wood": 20,
+        "stone": 10
+      },
+      "desc": "+30% tax gold",
+      "needs": {
+        "min_level": 2
+      }
+    },
+    {
+      "id": "barracks",
+      "name": "Barracks",
+      "max": 2,
+      "days": 40,
+      "cost": {
+        "gold": 40,
+        "wood": 30
+      },
+      "desc": "+manpower; lets you hire men-at-arms here"
+    },
+    {
+      "id": "blacksmith",
+      "name": "Blacksmith",
+      "max": 2,
+      "days": 45,
+      "cost": {
+        "gold": 50,
+        "stone": 20,
+        "iron": 10
+      },
+      "desc": "Better-armed men-at-arms",
+      "needs": {
+        "requires": "barracks"
+      }
+    },
+    {
+      "id": "walls",
+      "name": "Walls",
+      "max": 3,
+      "days": 60,
+      "cost": {
+        "gold": 50,
+        "wood": 40,
+        "stone": 30
+      },
+      "desc": "Harder to siege",
+      "levels": [
+        "Palisade",
+        "Stone walls",
+        "Castle"
+      ]
+    },
+    {
+      "id": "church",
+      "name": "Church",
+      "max": 3,
+      "days": 50,
+      "cost": {
+        "gold": 40,
+        "stone": 30
+      },
+      "desc": "+faith, +happiness",
+      "levels": [
+        "Chapel",
+        "Church",
+        "Cathedral"
+      ]
+    },
+    {
+      "id": "granary",
+      "name": "Granary",
+      "max": 2,
+      "days": 30,
+      "cost": {
+        "gold": 30,
+        "wood": 30
+      },
+      "desc": "Softens winter, +room for people"
+    },
+    {
+      "id": "tavern",
+      "name": "Tavern",
+      "max": 2,
+      "days": 25,
+      "cost": {
+        "gold": 30,
+        "wood": 20
+      },
+      "desc": "+happiness (spies come later)"
+    },
+    {
+      "id": "lumber_camp",
+      "name": "Lumber camp",
+      "max": 3,
+      "days": 25,
+      "cost": {
+        "gold": 20
+      },
+      "desc": "+wood",
+      "needs": {
+        "terrain": [
+          "forest",
+          "hills",
+          "marsh",
+          "plains"
+        ]
+      }
+    },
+    {
+      "id": "quarry",
+      "name": "Quarry",
+      "max": 3,
+      "days": 35,
+      "cost": {
+        "gold": 30,
+        "wood": 20
+      },
+      "desc": "+stone",
+      "needs": {
+        "terrain": [
+          "hills",
+          "mountains",
+          "desert"
+        ]
+      }
+    },
+    {
+      "id": "mine",
+      "name": "Mine",
+      "max": 3,
+      "days": 45,
+      "cost": {
+        "gold": 40,
+        "wood": 30
+      },
+      "desc": "+iron",
+      "needs": {
+        "terrain": [
+          "hills",
+          "mountains"
+        ]
+      }
+    },
+    {
+      "id": "port",
+      "name": "Port",
+      "max": 2,
+      "days": 45,
+      "cost": {
+        "gold": 40,
+        "wood": 40
+      },
+      "desc": "+gold from trade, +food from fishing",
+      "needs": {
+        "coastal": true
+      }
+    },
+    {
+      "id": "road",
+      "name": "Roads",
+      "max": 2,
+      "days": 30,
+      "cost": {
+        "gold": 20,
+        "stone": 20
+      },
+      "desc": "Armies and caravans move faster (25% / 40%); uses no slot",
+      "free_slot": true,
+      "levels": [
+        "Dirt roads",
+        "Paved roads"
+      ]
+    },
+    {
+      "id": "bridge",
+      "name": "Bridge",
+      "max": 1,
+      "days": 50,
+      "cost": {
+        "gold": 40,
+        "stone": 40,
+        "wood": 20
+      },
+      "desc": "Cross the river without delay; a bridge to hold in battle; uses no slot",
+      "needs": {
+        "river": true
+      },
+      "free_slot": true
+    },
+    {
+      "id": "watchtower",
+      "name": "Watchtower",
+      "max": 1,
+      "days": 30,
+      "cost": {
+        "gold": 30,
+        "stone": 20,
+        "wood": 10
+      },
+      "desc": "Guards trade routes here and next door against bandits; uses no slot",
+      "free_slot": true
+    },
+    {
+      "id": "caravanserai",
+      "name": "Caravanserai",
+      "max": 1,
+      "days": 40,
+      "cost": {
+        "gold": 50,
+        "wood": 30,
+        "stone": 20
+      },
+      "desc": "Every trade route through here earns more and is safer",
+      "needs": {
+        "min_level": 2
+      }
+    }
   ]
 }

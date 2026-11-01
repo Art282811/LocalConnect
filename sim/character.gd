@@ -37,7 +37,7 @@ func alive() -> bool:
 
 
 func age(today: int) -> int:
-	return int(floor(float(today - born) / 360.0))
+	return int(floor(float(today - born) / float(World.DAYS_PER_YEAR)))
 
 
 func title_name() -> String:

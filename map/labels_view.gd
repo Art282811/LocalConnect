@@ -22,6 +22,16 @@ func _ready() -> void:
 	serif = f
 
 
+var _tick := 0.0
+
+
+func _process(delta: float) -> void:
+	_tick += delta
+	if _tick > 1.0 and zoom >= REGION_ZOOM:
+		_tick = 0.0
+		queue_redraw()   # construction progress and new roads
+
+
 func set_zoom(z: float) -> void:
 	zoom = z
 	if _drawn_zoom < 0.0 or absf(log(z / _drawn_zoom)) > 0.08:
@@ -36,7 +46,7 @@ func _draw() -> void:
 	var detail := zoom >= DETAIL_ZOOM
 	var icon_scale := 1.0 / clampf(zoom, 0.55, 1.8)
 
-	if detail and zoom < 4.0:
+	if region and zoom < 4.0:
 		_draw_roads()
 
 	var close_battle := zoom >= BattleView.BLOCK_ZOOM
@@ -48,6 +58,9 @@ func _draw() -> void:
 			if detail:
 				_draw_villages(p)
 			draw_settlement(self, p.center, p.settlement, p.level + (1 if is_cap else 0), icon_scale, is_cap)
+			if p.build_id != "" and p.build_id != "bridge":
+				var total := world.economy.days_of(p.build_id, p.building_level(p.build_id) + 1)
+				_scaffold(p.center + Vector2(20, -6) * icon_scale, icon_scale, 1.0 - p.build_left / maxf(total, 1.0))
 		elif is_cap and world.realms[p.owner].provinces.size() >= 3:
 			draw_settlement(self, p.center, "castle", 2, icon_scale * 0.8, true)
 
@@ -100,15 +113,60 @@ func _text_centered(text: String, pos: Vector2, size: int, col: Color, outline: 
 	draw_string(serif, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
 
 
+## Roads exist only where someone built them: dirt tracks, then paved stone.
+## A road under construction shows as a faint dashed track.
 func _draw_roads() -> void:
-	var road := Color(0.48, 0.36, 0.22, 0.6)
+	var dirt := Color(0.55, 0.40, 0.22, 0.85)
+	var stone := Color(0.50, 0.48, 0.45, 0.95)
+	var planned := Color(0.55, 0.40, 0.22, 0.45)
+	var w := maxf(2.5 / zoom, 1.5)
 	for p: Province in world.provinces:
-		if p.owner == -1:
+		var lvl := p.building_level("road")
+		var building := p.build_id == "road"
+		if lvl == 0 and not building:
 			continue
 		for e: Dictionary in p.edges:
-			var nb: int = e["nb"]
-			if nb > p.id and world.provinces[nb].owner != -1:
-				draw_dashed_line(p.center, world.provinces[nb].center, road, 2.0, 7.0)
+			var q := world.provinces[int(e["nb"])]
+			var mid := (p.center + q.center) * 0.5
+			if lvl > 0:
+				var col := stone if lvl >= 2 else dirt
+				draw_line(p.center, mid, col, w * (1.4 if lvl >= 2 else 1.0), true)
+				if lvl >= 2:
+					draw_dashed_line(p.center, mid, Color(0.75, 0.72, 0.66), w * 0.4, w * 1.5)
+			else:
+				draw_dashed_line(p.center, mid, planned, w, w * 3.0)
+	_draw_bridges()
+
+
+func _draw_bridges() -> void:
+	var s := 1.0 / clampf(zoom, 0.6, 3.0)
+	for p: Province in world.provinces:
+		if p.river_point == Vector2.INF:
+			continue
+		var built := world.has_bridge(p)
+		var at := p.river_point
+		if built:
+			var arch := PackedVector2Array()
+			for i in 9:
+				var t := float(i) / 8.0
+				arch.append(at + Vector2((t - 0.5) * 18.0, -sin(t * PI) * 6.0) * s)
+			draw_polyline(arch, Color(0.45, 0.42, 0.38), 3.5 * s, true)
+			draw_line(at + Vector2(-9, 0) * s, at + Vector2(9, 0) * s, Color(0.35, 0.3, 0.25), 2.0 * s)
+		elif p.build_id == "bridge":
+			_scaffold(at, s, 1.0 - p.build_left / maxf(world.economy.days_of("bridge", 1), 1.0))
+
+
+## Wooden scaffolding with a progress bar: something is being built here.
+func _scaffold(at: Vector2, s: float, progress: float) -> void:
+	var wood := Color(0.55, 0.38, 0.2)
+	for x in [-6.0, 0.0, 6.0]:
+		draw_line(at + Vector2(x, 4) * s, at + Vector2(x, -10) * s, wood, 1.5 * s)
+	draw_line(at + Vector2(-7, -3) * s, at + Vector2(7, -3) * s, wood, 1.5 * s)
+	draw_line(at + Vector2(-7, -9) * s, at + Vector2(7, -9) * s, wood, 1.5 * s)
+	draw_line(at + Vector2(-6, 4) * s, at + Vector2(6, -9) * s, wood, 1.0 * s)
+	var bar := Rect2(at + Vector2(-10, 7) * s, Vector2(20, 3) * s)
+	draw_rect(bar, Color(0, 0, 0, 0.35))
+	draw_rect(Rect2(bar.position, Vector2(bar.size.x * clampf(progress, 0.0, 1.0), bar.size.y)), Color(0.85, 0.65, 0.2))
 
 
 func _draw_villages(p: Province) -> void:

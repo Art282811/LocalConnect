@@ -14,8 +14,15 @@ signal dynasty_lost(text: String, can_continue: bool)
 
 # --- Tuning knobs ---------------------------------------------------------
 const DAY_SECONDS := 1.5          # real seconds per in-game day at 1x
-const DAYS_PER_SEASON := 90
-const DAYS_PER_YEAR := 360
+## Pace of life: how many days make a year. Days set the pace of marching and
+## building; years set how fast people age. Longer years = longer reigns.
+static var DAYS_PER_YEAR := 720
+static var DAYS_PER_SEASON := 180
+
+
+static func set_year_length(days: int) -> void:
+	DAYS_PER_YEAR = days
+	DAYS_PER_SEASON = days / 4
 const SEASONS := ["Spring", "Summer", "Autumn", "Winter"]
 const TRUCE_DAYS := 900
 const START_TROOPS := 500
@@ -59,6 +66,7 @@ var diplomacy: Diplomacy
 var religion: Religion
 var dynasty: Dynasty
 var strategy: Strategy
+var trade: TradeNetwork
 var _accum := 0.0
 var _next_army_id := 0
 var _next_battle_id := 0
@@ -74,6 +82,7 @@ func setup(seed_value: int) -> void:
 	diplomacy = Diplomacy.new(self)
 	dynasty = Dynasty.new(self)
 	strategy = Strategy.new(self)
+	trade = TradeNetwork.new(self)
 	var religion_data := _load_json("res://data/religions.json")
 	religion = Religion.new(self, religion_data)
 
@@ -277,11 +286,23 @@ func can_enter(realm_id: int, pid: int) -> bool:
 
 func move_days(from: int, to: int) -> int:
 	var days: int = TERRAIN[provinces[to].terrain]["move"]
-	if provinces[to].building_level("road") > 0:
-		days = maxi(int(days * 0.7), 3)
+	var road := provinces[to].building_level("road")
+	if road > 0:
+		days = maxi(int(days * (0.75 if road == 1 else 0.6)), 3)
+	if has_river_crossing(provinces[to]) and not has_bridge(provinces[to]):
+		days += 2   # fording the river
 	if provinces[from].straits.has(to):
 		days *= 2
 	return days
+
+
+func has_river_crossing(p: Province) -> bool:
+	return p.river_point != Vector2.INF
+
+
+## Towns and cities have a bridge; elsewhere someone has to build one.
+func has_bridge(p: Province) -> bool:
+	return p.building_level("bridge") > 0 or (p.river_point != Vector2.INF and p.level >= 2)
 
 
 func armies_of(realm_id: int) -> Array[Army]:
@@ -430,6 +451,8 @@ func _move_armies() -> void:
 		if a.path.is_empty():
 			if a.order == "join":
 				_try_join(a)
+			elif a.order == "patrol":
+				trade.next_patrol_leg(a)
 			continue
 		a.dug_in = 0.0
 		var next: int = a.path[0]
@@ -446,6 +469,8 @@ func _move_armies() -> void:
 				_targeted.erase(next)
 				if a.order == "join":
 					_try_join(a)
+				elif a.order == "patrol":
+					trade.next_patrol_leg(a)
 				elif a.order != "hold" and a.order != "raid":
 					a.manual = false
 					a.order = ""
@@ -843,6 +868,7 @@ func _monthly() -> void:
 			economy.ai_manage(r)
 		_recruit(r, ai_runs)
 	strategy.monthly()   # assessments, war plans, diplomacy and peace
+	trade.monthly()      # bandits, and AI merchants founding routes
 	diplomacy.monthly()
 	religion.monthly()
 	var alive_armies: Array[Army] = []
@@ -1151,6 +1177,10 @@ func found_player_realm(pid: int) -> void:
 	if p.owner == -1:
 		r = _create_realm(p.name, p.culture, pid, "ambitious")
 		r.manpower = 400.0
+		var founder := dynasty.person(r.ruler)
+		if founder != null:
+			founder.born = day - rng.randi_range(18, 26) * DAYS_PER_YEAR
+			founder.health = 1.0
 		spawn_army(r.id, pid, 600)
 		post_news("You raise your banner over %s and found the %s." % [p.name, r.full_name()], 2)
 	else:

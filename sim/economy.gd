@@ -192,6 +192,8 @@ func why_not(p: Province, id: String) -> String:
 		return "Wrong terrain"
 	if needs.get("coastal", false) and not p.coastal:
 		return "Needs a coast"
+	if needs.get("river", false) and p.river_point == Vector2.INF:
+		return "No river here"
 	if p.level < int(needs.get("min_level", 0)):
 		return "Needs a town"
 	if needs.has("requires") and p.building_level(needs["requires"]) == 0:
@@ -238,6 +240,7 @@ func tick_day() -> void:
 		r.delta["food"] = float(r.delta["food"]) - p.pop * FOOD_PER_PERSON
 		_construct(p, r)
 	world.diplomacy.daily_trade()
+	world.trade.daily()
 	for r: Realm in world.realms:
 		if r.alive and not r.relics.is_empty():
 			r.delta["faith"] = float(r.delta["faith"]) + r.has_relic_effect("faith")

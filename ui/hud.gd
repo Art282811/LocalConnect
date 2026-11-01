@@ -491,6 +491,14 @@ func _open_settings() -> void:
 		Settings.ui_scale_index = (Settings.ui_scale_index + 1) % Settings.UI_SCALES.size()
 		_settings_saved()
 	)
+	_button("Pace of life: %s" % Settings.PACE_NAMES[Settings.pace_index], settings_box).pressed.connect(func() -> void:
+		Settings.pace_index = (Settings.pace_index + 1) % Settings.PACES.size()
+		_settings_saved()
+	)
+	var pace_note := Label.new()
+	pace_note.text = "Pace applies to new games. Longer years = longer reigns."
+	pace_note.add_theme_font_size_override("font_size", 14)
+	settings_box.add_child(pace_note)
 	_button("Autosave every year: %s" % ("on" if Settings.autosave else "off"), settings_box).pressed.connect(func() -> void:
 		Settings.autosave = not Settings.autosave
 		_settings_saved()

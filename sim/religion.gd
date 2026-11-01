@@ -471,7 +471,7 @@ func _end_crusade(c: Dictionary, won: bool) -> void:
 				continue
 			r.res["faith"] = float(r.res["faith"]) + 120.0
 			r.res["gold"] = float(r.res["gold"]) + share
-			r.glory_until = world.day + 360
+			r.glory_until = world.day + World.DAYS_PER_YEAR
 			add_head_memory(r, 25.0)
 			for other in members:
 				if int(other) != r.id:
