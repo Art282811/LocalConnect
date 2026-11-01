@@ -139,8 +139,8 @@ func _appraise(path: Array) -> Array:
 	var b := world.provinces[int(path[path.size() - 1])]
 	var ga := world.diplomacy.goods_of(a)
 	var gb := world.diplomacy.goods_of(b)
-	var value := 0.5 + 0.12 * path.size()
-	value += float(GOODS_VALUE.get(ga, 0.1)) * 3.0 + float(GOODS_VALUE.get(gb, 0.1)) * 3.0
+	var value := 0.4 + 0.1 * path.size()
+	value += float(GOODS_VALUE.get(ga, 0.1)) * 2.5 + float(GOODS_VALUE.get(gb, 0.1)) * 2.5
 	value += 0.25 * (a.building_level("market") + a.building_level("port") + b.building_level("market") + b.building_level("port"))
 	for pid in path:
 		value += 0.3 * world.provinces[int(pid)].building_level("caravanserai")
@@ -203,8 +203,8 @@ func _check(route: Dictionary) -> bool:
 			route["status"] = "closed"
 			route["blocker"] = "battle at %s" % p.name
 			return false
-		for a: Army in world.armies:
-			if not a.dead and a.province == p.id and world.at_war(owner, a.realm):
+		for a: Army in world.armies_at(p.id):
+			if not a.dead and world.at_war(owner, a.realm):
 				route["status"] = "closed"
 				route["blocker"] = "%s's army sits on the road at %s" % [world.realms[a.realm].name, p.name]
 				return false
@@ -242,6 +242,7 @@ func payouts(route: Dictionary) -> Dictionary:
 
 
 func daily() -> void:
+	daily_bandits()
 	for route in routes.duplicate():
 		if not world.realms[int(route["owner"])].alive:
 			routes.erase(route)
@@ -257,8 +258,8 @@ func daily() -> void:
 	for route in routes:
 		if route["status"] == "closed":
 			for pid in route["path"]:
-				for a: Army in world.armies:
-					if not a.dead and a.province == int(pid) and world.at_war(int(route["owner"]), a.realm):
+				for a: Army in world.armies_at(int(pid)):
+					if not a.dead and world.at_war(int(route["owner"]), a.realm):
 						var r := world.realms[a.realm]
 						if r.delta.has("gold"):
 							r.delta["gold"] = float(r.delta["gold"]) + float(route["value"]) * 0.3
@@ -279,11 +280,12 @@ func guarded(route: Dictionary, pid: int) -> bool:
 	var owner := int(route["owner"])
 	var p := world.provinces[pid]
 	var friends := world.diplomacy.allies_of(owner, ["alliance"])
-	for a: Army in world.armies:
-		if a.dead or (a.realm != owner and not friends.has(a.realm)):
-			continue
-		if a.province == pid or p.neighbors.has(a.province):
-			return true
+	var spots: Array[int] = [pid]
+	spots.append_array(p.neighbors)
+	for spot in spots:
+		for a: Army in world.armies_at(spot):
+			if not a.dead and (a.realm == owner or friends.has(a.realm)):
+				return true
 	return false
 
 
@@ -333,8 +335,13 @@ func weak_points(route: Dictionary, limit := 3) -> Array[int]:
 
 
 func monthly() -> void:
+	_ai_found_routes()
+
+
+## Bandits: each route is checked once a month, on its own day.
+func daily_bandits() -> void:
 	for route in routes:
-		if route["status"] != "active":
+		if (int(route["id"]) + world.day) % 30 != 0 or route["status"] != "active":
 			continue
 		var chance := risk(route)
 		if world.rng.randf() >= chance:
@@ -349,7 +356,6 @@ func monthly() -> void:
 		owner.res["gold"] = maxf(float(owner.res["gold"]) - float(route["value"]) * 8.0, -300.0)
 		var importance := 2 if owner.is_player else 0
 		world.post_news("Bandits plunder caravans on the %s near %s. Guard the road with troops or build watchtowers." % [route["name"], world.provinces[pid].name], importance)
-	_ai_found_routes()
 
 
 ## AI merchants found routes too: rich, greedy realms most of all.
@@ -357,7 +363,13 @@ func _ai_found_routes() -> void:
 	for r: Realm in world.realms:
 		if not r.alive or r.is_player:
 			continue
-		var keen := 0.04 + (0.06 if r.personality == "greedy" else 0.0)
+		var owned := 0
+		for route in routes:
+			if int(route["owner"]) == r.id:
+				owned += 1
+		if owned >= 2:
+			continue
+		var keen := 0.02 + (0.03 if r.personality == "greedy" else 0.0)
 		if world.rng.randf() > keen or float(r.res["gold"]) < 250.0:
 			continue
 		var best: Array = []

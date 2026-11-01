@@ -115,6 +115,11 @@ func win_chance(attacker: int, target: int) -> float:
 
 # --- Assessment ----------------------------------------------------------------------------------------
 
+var _median := 1.0
+
+
+## Monthly: refresh strengths and settle wars. Each realm's own thinking is
+## spread over the month by `daily()` so the game never stalls.
 func monthly() -> void:
 	_power.clear()
 	var powers: Array[float] = []
@@ -122,17 +127,19 @@ func monthly() -> void:
 		if r.alive:
 			powers.append(power(r.id))
 	powers.sort()
-	var median := powers[powers.size() / 2] if not powers.is_empty() else 1.0
+	_median = powers[powers.size() / 2] if not powers.is_empty() else 1.0
+	_peace_month()
+
+
+func daily() -> void:
 	for r: Realm in world.realms:
+		if (r.id + world.day) % 30 != 0:
+			continue
 		if _ai_runs(r):
-			_assess(r, median)
-	for r: Realm in world.realms:
-		if _ai_runs(r):
+			_assess(r, _median)
 			_plan_war(r)
-	for r: Realm in world.realms:
 		if r.alive and not r.is_player:
 			_diplomacy(r)
-	_peace_month()
 
 
 func _assess(r: Realm, median: float) -> void:
@@ -152,14 +159,14 @@ func _assess(r: Realm, median: float) -> void:
 
 func threat_score(r: Realm, o: Realm, median: float) -> float:
 	var dip := world.diplomacy
-	if dip.has_treaty("alliance", r.id, o.id) or r.liege == o.id or o.liege == r.id:
-		return 0.0
 	var border := dip.shares_border(r, o)
 	var proximity := 1.0 if border else 0.0
 	if not border and r.capital != -1 and o.capital != -1:
 		if world.provinces[r.capital].center.distance_to(world.provinces[o.capital].center) < 600.0:
 			proximity = 0.35
 	if proximity == 0.0:
+		return 0.0
+	if dip.has_treaty("alliance", r.id, o.id) or r.liege == o.id or o.liege == r.id:
 		return 0.0
 	var hostility := clampf((20.0 - dip.opinion(o.id, r.id)) / 60.0, 0.0, 2.0)
 	if o.personality == "ambitious" or o.personality == "cruel":
@@ -209,7 +216,7 @@ func province_value(r: Realm, p: Province) -> float:
 		v += 0.6
 	# Trade roads: secure our own, cut our rivals'.
 	for route in world.trade.routes:
-		if (route["path"] as Array).has(p.id) or (route["path"] as Array).has(float(p.id)):
+		if (route["path"] as Array).has(p.id):
 			v += 2.0 if int(route["owner"]) == r.id else 1.0
 	return v
 
@@ -639,6 +646,10 @@ func _peace_month() -> void:
 		var y := int(w["b"])
 		if not world.at_war(x, y):
 			continue
+		var pair: Array = w.get("for", [])
+		if pair.size() == 2 and not world.at_war(int(pair[0]), int(pair[1])):
+			world.make_peace(x, y)   # the war we joined is over
+			continue
 		var rx := world.realms[x]
 		var ry := world.realms[y]
 		var x_ai := _ai_runs(rx)
@@ -663,6 +674,11 @@ func wants_peace(rid: int, enemy: int, w: Dictionary) -> bool:
 	var length := world.day - int(w["start"])
 	if length < 60:
 		return false
+	var pair: Array = w.get("for", [])
+	if pair.size() == 2:
+		# We joined someone else's war: done once it is over, or after a fair effort.
+		if not world.at_war(int(pair[0]), int(pair[1])) or length > 240:
+			return true
 	var ratio := power(rid) / maxf(power(enemy), 1.0)
 	if world.armies_of(rid).is_empty():
 		return true

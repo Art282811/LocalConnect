@@ -30,12 +30,35 @@ func _init(w: World) -> void:
 
 # --- Opinion ---------------------------------------------------------------------------------
 
+var _cache_day := -1
+var _borders := {}    # realm id -> {neighbour realm id: true}, rebuilt once a day
+var _opinions := {}   # a * 100000 + b -> opinion, cleared daily and on any change
+
+
+func _fresh() -> void:
+	if _cache_day == world.day:
+		return
+	_cache_day = world.day
+	_opinions.clear()
+	_borders.clear()
+	for p: Province in world.provinces:
+		if p.owner == -1:
+			continue
+		for nb: int in p.neighbors:
+			var o := world.provinces[nb].owner
+			if o != -1 and o != p.owner:
+				if not _borders.has(p.owner):
+					_borders[p.owner] = {}
+				_borders[p.owner][o] = true
+
+
+func invalidate() -> void:
+	_cache_day = -1
+
+
 func shares_border(a: Realm, b: Realm) -> bool:
-	for pid: int in a.provinces:
-		for nb: int in world.provinces[pid].neighbors:
-			if world.provinces[nb].owner == b.id:
-				return true
-	return false
+	_fresh()
+	return _borders.has(a.id) and (_borders[a.id] as Dictionary).has(b.id)
 
 
 ## Why `of_id` feels the way it does about `toward_id`: [[label, value], ...].
@@ -77,7 +100,7 @@ func opinion_parts(of_id: int, toward_id: int) -> Array:
 				parts.append(["Their vassal" if int(t["b"]) == a.id else "Our vassal", -5.0 if int(t["b"]) == a.id else 10.0])
 	match a.personality:
 		"ambitious":
-			if border and world.realm_strength(b) < world.realm_strength(a) * 0.7:
+			if border and world.strategy.power(b.id) < world.strategy.power(a.id) * 0.7:
 				parts.append(["Covets their land", -15.0])
 		"cruel":
 			parts.append(["Cruel ruler", -5.0])
@@ -97,13 +120,20 @@ func opinion_parts(of_id: int, toward_id: int) -> Array:
 func opinion(of_id: int, toward_id: int) -> float:
 	if of_id == toward_id:
 		return 100.0
+	_fresh()
+	var key := of_id * 100000 + toward_id
+	if _opinions.has(key):
+		return float(_opinions[key])
 	var total := 0.0
 	for part in opinion_parts(of_id, toward_id):
 		total += float(part[1])
-	return clampf(total, -100.0, 100.0)
+	total = clampf(total, -100.0, 100.0)
+	_opinions[key] = total
+	return total
 
 
 func remember(of_id: int, toward_id: int, amount: float) -> void:
+	_opinions.clear()
 	var a := world.realms[of_id]
 	a.memories[toward_id] = clampf(float(a.memories.get(toward_id, 0.0)) + amount, -60.0, 60.0)
 
@@ -112,22 +142,49 @@ func remember(of_id: int, toward_id: int, amount: float) -> void:
 
 func treaties_between(x: int, y: int) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
-	for t in treaties:
-		if (int(t["a"]) == x and int(t["b"]) == y) or (int(t["a"]) == y and int(t["b"]) == x):
+	for t in _of(x):
+		if int(t["a"]) == y or int(t["b"]) == y:
 			out.append(t)
 	return out
 
 
 ## For tribute and vassal, `x` is the receiver / liege.
-func has_treaty(kind: String, x: int, y: int) -> bool:
+var _treaty_index := {}   # "kind:a:b" -> true
+var _indexed_count := -1
+
+
+func _treaty_key(kind: String, x: int, y: int) -> String:
+	return "%s:%d:%d" % [kind, x, y]
+
+
+var _by_realm := {}       # realm id -> Array of its treaties
+
+
+func _reindex() -> void:
+	_treaty_index.clear()
+	_by_realm.clear()
 	for t in treaties:
-		if t["type"] != kind:
-			continue
-		if int(t["a"]) == x and int(t["b"]) == y:
-			return true
-		if SYMMETRIC.has(kind) and int(t["a"]) == y and int(t["b"]) == x:
-			return true
-	return false
+		_treaty_index[_treaty_key(str(t["type"]), int(t["a"]), int(t["b"]))] = true
+		for side in ["a", "b"]:
+			var rid := int(t[side])
+			if not _by_realm.has(rid):
+				_by_realm[rid] = []
+			_by_realm[rid].append(t)
+	_indexed_count = treaties.size()
+
+
+func _of(rid: int) -> Array:
+	if _indexed_count != treaties.size():
+		_reindex()
+	return _by_realm.get(rid, [])
+
+
+func has_treaty(kind: String, x: int, y: int) -> bool:
+	if _indexed_count != treaties.size():
+		_reindex()
+	if _treaty_index.has(_treaty_key(kind, x, y)):
+		return true
+	return SYMMETRIC.has(kind) and _treaty_index.has(_treaty_key(kind, y, x))
 
 
 func add_treaty(kind: String, x: int, y: int) -> void:
@@ -139,6 +196,8 @@ func add_treaty(kind: String, x: int, y: int) -> void:
 	elif kind == "tribute":
 		until = world.day + TRIBUTE_DAYS
 	treaties.append({"type": kind, "a": x, "b": y, "start": world.day, "until": until})
+	_opinions.clear()
+	_indexed_count = -1
 	if kind == "trade":
 		_open_route(x, y)
 	elif kind == "vassal":
@@ -147,6 +206,8 @@ func add_treaty(kind: String, x: int, y: int) -> void:
 
 
 func remove_treaty(kind: String, x: int, y: int) -> void:
+	_opinions.clear()
+	_indexed_count = -1
 	for i in range(treaties.size() - 1, -1, -1):
 		var t := treaties[i]
 		if t["type"] != kind:
@@ -167,7 +228,7 @@ func remove_treaty(kind: String, x: int, y: int) -> void:
 
 func allies_of(rid: int, kinds: Array) -> Array[int]:
 	var out: Array[int] = []
-	for t in treaties:
+	for t in _of(rid):
 		if not kinds.has(t["type"]):
 			continue
 		var other := -1
@@ -182,7 +243,7 @@ func allies_of(rid: int, kinds: Array) -> Array[int]:
 
 func vassals_of(rid: int) -> Array[int]:
 	var out: Array[int] = []
-	for t in treaties:
+	for t in _of(rid):
 		if t["type"] == "vassal" and int(t["a"]) == rid and world.realms[int(t["b"])].alive:
 			out.append(int(t["b"]))
 	return out
@@ -249,6 +310,8 @@ func _abandon(ally: int, friend: int) -> void:
 
 
 func on_realm_gone(rid: int) -> void:
+	_indexed_count = -1
+	_opinions.clear()
 	for i in range(treaties.size() - 1, -1, -1):
 		var t := treaties[i]
 		if int(t["a"]) == rid or int(t["b"]) == rid:
@@ -544,6 +607,7 @@ func break_treaty(kind: String, from: int, to: int) -> void:
 # --- Monthly ---------------------------------------------------------------------------------------
 
 func monthly() -> void:
+	_indexed_count = -1   # treaties may expire below
 	for r: Realm in world.realms:
 		if not r.alive:
 			continue

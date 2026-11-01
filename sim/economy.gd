@@ -22,7 +22,8 @@ const TOWN_POP := 2000.0
 const CITY_POP := 5000.0
 const FOOD_PER_PERSON := 0.001        # per day
 const SOLDIER_FOOD := 0.0015
-const SOLDIER_UPKEEP := 0.0012        # gold per soldier per day
+const SOLDIER_UPKEEP := 0.002         # gold per soldier per day
+const ADMIN_COST := 0.04              # x provinces^1.35 gold per day: big realms are costly to run
 const LEVY_SIZE := 400
 const LEVY_GOLD := 30.0
 const MAA_SIZE := 250
@@ -258,6 +259,7 @@ func tick_day() -> void:
 	for r: Realm in world.realms:
 		if not r.alive:
 			continue
+		r.delta["gold"] = float(r.delta["gold"]) - admin_cost(r) - court_expenses(r)
 		for k in RESOURCES:
 			r.res[k] = float(r.res[k]) + float(r.delta[k])
 		var was_starving := r.starving
@@ -304,9 +306,9 @@ func _construct(p: Province, r: Realm) -> void:
 func _update_people(p: Province) -> void:
 	var r := world.realms[p.owner]
 	# Mood drifts toward its target.
-	var target := happiness_target(p)
 	var before := p.happiness
-	p.happiness = move_toward(p.happiness, target, 0.4)
+	if (p.id + world.day) % 5 == 0:
+		p.happiness = move_toward(p.happiness, happiness_target(p), 2.0)
 	if r.is_player and before >= 30.0 and p.happiness < 30.0:
 		world.post_news("Riots break out in %s!" % p.name, 2)
 	# Population grows when fed and content, shrinks in famine.
@@ -317,7 +319,7 @@ func _update_people(p: Province) -> void:
 	p.pop = maxf(p.pop, 200.0)
 	_update_level(p, r.is_player)
 	# Deep misery can boil over.
-	if p.happiness < 15.0 and r.capital != p.id and world.rng.randf() < 0.004:
+	if p.happiness < 12.0 and r.capital != p.id and world.rng.randf() < 0.0006:
 		world.peasant_revolt(p)
 
 
@@ -351,6 +353,16 @@ func _is_capital(p: Province) -> bool:
 
 
 # --- Manpower & recruiting ------------------------------------------------------------
+
+## Courts, clerks and castellans: grows faster than the realm itself.
+func admin_cost(r: Realm) -> float:
+	return ADMIN_COST * pow(float(r.provinces.size()), 1.35)
+
+
+## A full treasury draws hangers-on: 0.2% a day of everything above 1,000 gold.
+func court_expenses(r: Realm) -> float:
+	return maxf(float(r.res["gold"]) - 1000.0, 0.0) * 0.002
+
 
 func monthly_manpower(r: Realm) -> float:
 	var m := 0.0
@@ -438,6 +450,13 @@ func ai_manage(r: Realm) -> void:
 		r.tax = 1
 	if avg < 32.0 and float(r.res["gold"]) > FESTIVAL_COST * 2.0 and r.festival_until < world.day:
 		hold_festival(r)
+	# Surplus gold becomes better-drilled, better-armed troops.
+	if float(r.res["gold"]) > 600.0:
+		for a: Army in world.armies_of(r.id):
+			if a.quality < 1.8 and float(r.res["gold"]) > 500.0:
+				var spend := minf(float(r.res["gold"]) - 500.0, a.troops * 0.1)
+				a.quality = minf(a.quality + spend / maxf(a.troops, 1.0) * 0.5, 1.8)
+				r.res["gold"] = float(r.res["gold"]) - spend
 	_ai_build(r)
 
 
@@ -456,7 +475,10 @@ func _ai_build(r: Realm) -> void:
 	for pid: int in r.provinces:
 		if world.provinces[pid].build_id != "":
 			busy += 1
-	if busy >= 1 + r.provinces.size() / 3:
+	var limit := 1 + r.provinces.size() / 3
+	if float(r.res["gold"]) > 400.0:
+		limit = 2 + r.provinces.size() / 2   # a rich treasury builds on many fronts
+	if busy >= limit:
 		return
 	var food_in := float(r.delta.get("food", 0.0))
 	var gold_in := float(r.delta.get("gold", 0.0))

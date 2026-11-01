@@ -5,7 +5,7 @@ extends RefCounted
 ## drive the blocks you see from afar and the soldiers you see up close.
 
 const SECONDS_PER_DAY := 6.0   # battle seconds per in-game day
-const STEP := 0.1
+const STEP := 0.15
 const MAX_SECONDS := 150.0
 const DEPLOY := 20.0           # distance of each line from the centre
 const KINDS := {
@@ -58,6 +58,9 @@ var _next_reg := 0
 var _acc: float = 0.0
 var _think_timer: float = 0.0
 var _rng := RandomNumberGenerator.new()
+var _by_id := {}                       # regiment id -> Regiment
+var _sides: Array = [[], []]           # living regiments per side, refreshed each step
+var _steps := 0
 
 
 # --- Setup ----------------------------------------------------------------------------
@@ -217,6 +220,7 @@ func _make_regiments(total: float, quality: float, comp: Dictionary, army_id: in
 	for r: Regiment in out:
 		r.start_men = r.men
 		regiments.append(r)
+		_by_id[r.id] = r
 	return out
 
 
@@ -330,12 +334,18 @@ func update(dt: float) -> void:
 
 func _step() -> void:
 	time += STEP
+	_steps += 1
+	_sides = [[], []]
+	for r: Regiment in regiments:
+		if r.alive():
+			(_sides[r.side] as Array).append(r)
 	_think_timer -= STEP
 	if _think_timer <= 0.0:
 		_think_timer = 1.0
 		_consider_withdrawal()
 	for r: Regiment in regiments:
-		if r.alive():
+		# Each regiment re-plans every third step (about twice a battle-second).
+		if r.alive() and (_steps + r.id) % 3 == 0:
 			_think(r)
 	for r: Regiment in regiments:
 		if r.alive():
@@ -345,12 +355,8 @@ func _step() -> void:
 	_check_end()
 
 
-func _enemies_of(r: Regiment) -> Array[Regiment]:
-	var out: Array[Regiment] = []
-	for o: Regiment in regiments:
-		if o.side != r.side and o.alive():
-			out.append(o)
-	return out
+func _enemies_of(r: Regiment) -> Array:
+	return _sides[1 - r.side]
 
 
 func _visible(viewer: Regiment, target: Regiment) -> bool:
@@ -375,10 +381,7 @@ func _nearest_enemy(r: Regiment, prefer: String = "") -> Regiment:
 
 
 func _reg(reg_id: int) -> Regiment:
-	for r: Regiment in regiments:
-		if r.id == reg_id:
-			return r
-	return null
+	return _by_id.get(reg_id)
 
 
 func _think(r: Regiment) -> void:

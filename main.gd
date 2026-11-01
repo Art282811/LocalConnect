@@ -789,7 +789,7 @@ func _resource_bar(r: Realm) -> String:
 		var amount := float(r.res.get(k, 0.0))
 		var d := float(r.delta.get(k, 0.0))
 		var col := "#3c6a2a" if d >= 0.0 else "#9a2a1a"
-		var warn := k == "food" and r.starving or k == "gold" and r.broke
+		var warn: bool = k == "food" and r.starving or k == "gold" and r.broke
 		var name_col := "#9a2a1a" if warn else "#3d2a17"
 		bits.append("[color=%s][b]%s[/b][/color] %d [color=%s]%+.1f[/color]" % [name_col, k.capitalize(), int(amount), col, d])
 	bits.append("[b]Men[/b] %d" % int(r.manpower))
@@ -846,9 +846,13 @@ func _realm_text(r: Realm) -> String:
 	text += "\n"
 	if not r.relics.is_empty():
 		text += "Relics: %s\n" % ", ".join(PackedStringArray(r.relics))
-	var trade := world.diplomacy.trade_income(r.id)
+	var trade := world.diplomacy.trade_income(r.id) + world.trade.income(r.id)
 	if trade > 0.0:
 		text += "Trade routes bring %.1f gold a day\n" % trade
+	text += "Running the realm costs %.1f gold a day (grows with its size)\n" % world.economy.admin_cost(r)
+	var court := world.economy.court_expenses(r)
+	if court > 0.1:
+		text += "Court expenses eat %.1f gold a day (a treasury over 1,000 draws hangers-on)\n" % court
 	var pacts := PackedStringArray()
 	for t in world.diplomacy.treaties:
 		if int(t["a"]) == r.id or int(t["b"]) == r.id:

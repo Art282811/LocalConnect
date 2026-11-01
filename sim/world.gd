@@ -246,6 +246,7 @@ func date_string() -> String:
 func tick_day() -> void:
 	day += 1
 	_move_armies()
+	_index_day = -1
 	_resolve_battles()
 	_progress_occupations()
 	economy.tick_day()
@@ -254,6 +255,7 @@ func tick_day() -> void:
 	for r: Realm in realms:
 		if r.alive and (r.id + day) % 5 == 0:
 			_ai_think(r)
+	strategy.daily()
 	if day % 30 == 0:
 		_monthly()
 	if day % DAYS_PER_SEASON == 0:
@@ -313,11 +315,34 @@ func armies_of(realm_id: int) -> Array[Army]:
 	return out
 
 
+var _army_ids := {}       # army id -> Army
+var _index_day := -1
+var _by_province := {}    # province id -> Array of living armies (rebuilt daily)
+
+
 func army_by_id(army_id: int) -> Army:
-	for a: Army in armies:
-		if a.id == army_id and not a.dead:
-			return a
-	return null
+	var a: Army = _army_ids.get(army_id)
+	if a == null:
+		for b: Army in armies:
+			_army_ids[b.id] = b
+		a = _army_ids.get(army_id)
+	if a == null or a.dead:
+		return null
+	return a
+
+
+## Living armies standing in each province, rebuilt at most once a day.
+func armies_at(pid: int) -> Array:
+	if _index_day != day:
+		_index_day = day
+		_by_province.clear()
+		for a: Army in armies:
+			if a.dead:
+				continue
+			if not _by_province.has(a.province):
+				_by_province[a.province] = []
+			_by_province[a.province].append(a)
+	return _by_province.get(pid, [])
 
 
 func realm_troops(r: Realm) -> int:
@@ -429,6 +454,7 @@ func spawn_army(realm_id: int, pid: int, troops: int) -> Army:
 	a.troops = troops
 	a.province = pid
 	a.skill = rng.randi_range(0, 3)
+	_army_ids[a.id] = a
 	var r := realms[realm_id]
 	dynasty.assign_general(a)
 	a.general_trait = ["cautious", "steady", "steady", "reckless"][rng.randi() % 4]
@@ -745,7 +771,7 @@ func _raid(a: Army, p: Province) -> void:
 
 
 func _hostile_army_in(realm_id: int, pid: int) -> bool:
-	for a: Army in armies:
+	for a: Army in armies_at(pid):
 		if not a.dead and a.province == pid and at_war(realm_id, a.realm):
 			return true
 	return false
@@ -883,7 +909,7 @@ func _monthly() -> void:
 func _recruit(r: Realm, raise_new: bool) -> void:
 	var gold_per_man := Economy.LEVY_GOLD / Economy.LEVY_SIZE
 	var mine := armies_of(r.id)
-	var cap := 400 + r.provinces.size() * 120
+	var cap := 400 + r.provinces.size() * 100
 	for a: Army in mine:
 		if provinces[a.province].owner != r.id or a.troops >= cap or r.manpower <= 0.0:
 			continue
@@ -914,9 +940,9 @@ func _seasonal() -> void:
 ## Big realms crack: a far-flung province rises and takes its neighbours with it.
 func _maybe_rebel(r: Realm) -> void:
 	var n := r.provinces.size()
-	if n < 9:
+	if n < 13:
 		return
-	var chance := (n - 8) * 0.012 + (0.04 if not r.enemies.is_empty() else 0.0)
+	var chance := (n - 12) * 0.006 + (0.03 if not r.enemies.is_empty() else 0.0)
 	if r.is_player and not auto_rule:
 		chance *= 0.5
 	if rng.randf() > chance:
@@ -1035,6 +1061,12 @@ func _end_war(x: int, y: int) -> void:
 		var w := wars[i]
 		if (w["a"] == x and w["b"] == y) or (w["a"] == y and w["b"] == x):
 			wars.remove_at(i)
+	# Allies who joined this war go home too, however it ended.
+	for other in wars.duplicate():
+		var pair: Array = other.get("for", [])
+		if pair.size() == 2 and ((int(pair[0]) == x and int(pair[1]) == y) or (int(pair[0]) == y and int(pair[1]) == x)):
+			if at_war(int(other["a"]), int(other["b"])):
+				_end_war(int(other["a"]), int(other["b"]))
 	for a: Army in armies:
 		if not a.dead and (a.realm == x or a.realm == y):
 			var o := provinces[a.province].owner

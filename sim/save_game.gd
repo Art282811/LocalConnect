@@ -135,6 +135,8 @@ static func load_world(path: String = SLOT) -> World:
 	for o in d.get("offers", []):
 		w.diplomacy.offers.append(o)
 	w.diplomacy._cooldown = d.get("cooldown", {})
+	w.diplomacy._indexed_count = -1
+	w.diplomacy.invalidate()
 	w.diplomacy._next_offer = int(d.get("next_offer", 0))
 	var hm: Dictionary = d.get("head_mem", {})
 	for f in w.religion.head_mem.keys():
@@ -145,7 +147,12 @@ static func load_world(path: String = SLOT) -> World:
 	w.religion._next_crusade = int(d.get("next_crusade", 0))
 	w.trade.routes.clear()
 	for gr in d.get("grand_routes", []):
+		gr["path"] = _ints(gr["path"])
 		w.trade.routes.append(gr)
+	for rt in w.diplomacy.routes:
+		rt["path"] = _ints(rt["path"])
+	for c in w.religion.crusades:
+		c["provinces"] = _ints(c["provinces"])
 	w.trade._next = int(d.get("next_route", 0))
 	for p: Province in w.provinces:
 		w.refresh_fort(p)
@@ -193,6 +200,14 @@ static func _assign(obj: Object, field: String, value: Variant) -> void:
 				dict.merge(value)
 		_:
 			obj.set(field, value)
+
+
+static func _ints(values: Variant) -> Array[int]:
+	var out: Array[int] = []
+	if values is Array:
+		for v in values:
+			out.append(int(v))
+	return out
 
 
 ## JSON turns integer dictionary keys into strings; turn them back.

@@ -277,6 +277,20 @@ Every AI realm keeps a strategic "mind" (`sim/strategy.gd`), re-assessed monthly
 
 Tuning knobs are constants at the top of `sim/strategy.gd`.
 
+## Testing without a phone
+
+The `tests/` folder runs the game headless with Godot 4.3:
+
+```
+godot --headless --path . --script res://tests/check_scripts.gd      # compile every script
+godot --headless --path . --script res://tests/simulate.gd -- 10 42  # 10 AI-only years, seed 42
+godot --headless --path . --script res://tests/profile.gd -- 3 180   # time each part of a day
+```
+
+`simulate.gd` prints a yearly report (realms, wars by kind, battles, troops,
+gold flows, mood and its causes, AI postures) and checks that saving and
+loading round-trips.
+
 ## Layout
 
 | Folder | What's in it |
