@@ -10,6 +10,7 @@ signal new_world_pressed
 signal rise_again_pressed
 signal realm_pressed
 signal battle_alert_pressed
+signal map_mode_pressed
 
 const SPEEDS := [0.0, 0.25, 1.0, 2.0, 4.0]
 
@@ -23,6 +24,7 @@ var resource_panel: PanelContainer
 var resource_text: RichTextLabel
 var realm_button: Button
 var battle_button: Button
+var map_mode_button: Button
 var realm_label: Label
 var speed_buttons: Array[Button] = []
 var steward_button: Button
@@ -112,7 +114,7 @@ func _build_top_bar(root: Control) -> void:
 	bar.add_child(row)
 
 	date_label = Label.new()
-	date_label.custom_minimum_size.x = 250
+	date_label.custom_minimum_size.x = 200
 	row.add_child(date_label)
 	realm_label = Label.new()
 	realm_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -142,6 +144,9 @@ func _build_top_bar(root: Control) -> void:
 	steward_button.toggle_mode = true
 	steward_button.tooltip_text = "Let the AI run your realm's wars and armies"
 	steward_button.toggled.connect(func(on: bool) -> void: steward_toggled.emit(on))
+
+	map_mode_button = _button("Map: Realms", row)
+	map_mode_button.pressed.connect(func() -> void: map_mode_pressed.emit())
 
 	var log_btn := _button("Chronicle", row)
 	log_btn.pressed.connect(_toggle_log)
@@ -313,6 +318,10 @@ func set_resources(bbcode: String) -> void:
 	if bbcode != "":
 		resource_text.text = bbcode
 		resource_panel.reset_size()
+
+
+func set_map_mode(text: String) -> void:
+	map_mode_button.text = "Map: " + text
 
 
 func set_battle_alert(text: String) -> void:

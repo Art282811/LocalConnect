@@ -789,6 +789,7 @@ func _realm_falls(r: Realm, conqueror: Realm) -> void:
 			a.dead = true
 	for other in r.enemies.keys():
 		_end_war(r.id, other)
+	diplomacy.on_realm_gone(r.id)
 	post_news("The %s has fallen to %s." % [old_name, conqueror.name], 2)
 	if r.is_player:
 		r.is_player = false

@@ -4,7 +4,8 @@ A real-time medieval kingdom builder for phones: found a tiny realm anywhere on 
 map of Europe and the Near East, grow it into an empire, and keep it alive through
 war, faith, diplomacy and family politics.
 
-This repo contains **Layers 1–3** (living map, your realm, battles) from the
+This repo contains **Layers 1–4** (living map, your realm, battles, diplomacy &
+religion) from the
 design document (`docs/game-design-document.pdf`).
 
 ## Running it
@@ -97,12 +98,44 @@ Phone/tablet: one finger pans, two fingers pinch-zoom, tap to select.
   **Assault walls** against the town garrison; the AI does too.
 - A **Battle!** button in the top bar jumps to any fight you're in.
 
+## What Layer 4 adds
+
+- **Opinion (−100…+100)** of every realm toward every other, with reasons you can
+  read: borders, faith, culture, wars, treaties, gifts, insults, personality,
+  broken oaths. Tap a foreign province → **Diplomacy…**.
+- **Treaties:** gifts, insults, non-aggression pacts, alliances, defensive pacts,
+  trade agreements, demanding tribute or vassalage, offering to become a vassal.
+  Each proposal says whether they're likely to agree.
+- **Calls to arms:** allies, defensive partners and vassals are called into wars.
+  AI allies may abandon you; refusing your ally's call breaks the alliance.
+  Attacking someone you have a pact with makes you an **oathbreaker** to all.
+- **Envoys:** AI rulers propose pacts, demand tribute, or call you to arms —
+  answer under **Realm → Offers**.
+- **Trade routes** between markets and ports carry goods (grain, wine, iron,
+  silk, salt, timber, furs) and pay both sides daily. Caravans and ships move
+  along them; wars and pirates cut them.
+- **Vassals** pay their liege and fight its wars; they may rise up if they hate a
+  weak liege. Vassal lands are tinted toward their liege's colour.
+- **Faiths:** Catholic, Orthodox, Sunni, Shia and three pagan faiths. Ruling
+  provinces of another faith costs happiness; **send missionaries** to convert.
+- **Religious heads** (Pope, Patriarch, two Caliphs) judge rulers by piety,
+  donations, holy sites and wars on fellow believers — and can **excommunicate**.
+  **Realm → Donate** wins their favour.
+- **Crusades & jihads** (from Year 6; set in `sim/religion.gd`): the head calls a
+  holy war against a region (Jerusalem first if unbelievers hold it). Three ways
+  in: **join**, **pledge gold**, or **lend an army** to the leader. With enough
+  faith and favour, **call your own** on any unbeliever's province. Victory
+  brings faith, loot, glory and relics (permanent bonuses); failure costs faith.
+  Crusade arrows sweep across the map.
+- **Map modes:** Realms, Faiths, Diplomacy (green = friendly, red = hostile,
+  blue = allies).
+
 ## Layout
 
 | Folder | What's in it |
 | --- | --- |
-| `data/` | `world.json` (coastlines, seas, terrain zones, rivers, cultures), `realms.json` (starting realms), `buildings.json` (costs, limits, effects), `names.json` (name syllables). Edit these to tweak content. |
-| `sim/` | The simulation, separate from visuals: `world.gd` (clock, AI, wars, sieges, rebellions), `economy.gd` (resources, buildings, people, taxes, happiness, recruiting), `battle.gd` + `regiment.gd` (tactical battles), `map_builder.gd` (provinces from the outline), `province.gd`, `realm.gd`, `army.gd`, `names.gd`. |
+| `data/` | `world.json` (coastlines, seas, terrain zones, rivers, cultures), `realms.json` (starting realms), `buildings.json` (costs, limits, effects), `religions.json` (faiths, holy sites, relics), `names.json` (name syllables). Edit these to tweak content. |
+| `sim/` | The simulation, separate from visuals: `world.gd` (clock, AI, wars, sieges, rebellions), `economy.gd` (resources, buildings, people, taxes, happiness, recruiting), `battle.gd` + `regiment.gd` (tactical battles), `diplomacy.gd` (opinion, treaties, trade), `religion.gd` (faiths, heads, crusades), `map_builder.gd` (provinces from the outline), `province.gd`, `realm.gd`, `army.gd`, `names.gd`. |
 | `map/` | `map_view.gd` (parchment map), `labels_view.gd` (names, settlements, roads), `overlay_view.gd` (armies, sieges, battle smoke), `battle_view.gd` (battle blocks and soldiers), `camera_rig.gd` (pan/zoom/pinch). |
 | `ui/` | `hud.gd` — top bar, news feed, info panel, spawn prompt, chronicle. |
 | `main.gd` | Wires it together and handles taps/selection. |
@@ -121,7 +154,7 @@ its map data. iOS builds need a Mac with Xcode.
 1. ~~Layer 1 — Living map~~
 2. ~~Layer 2 — Your realm~~
 3. ~~Layer 3 — Battles~~
-4. Layer 4 — Diplomacy, religion, crusades
+4. ~~Layer 4 — Diplomacy, religion, crusades~~
 5. Layer 5 — Dynasty & drama
 6. Layer 6 — Polish & phone builds
 

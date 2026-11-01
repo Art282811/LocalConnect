@@ -1,0 +1,41 @@
+{
+  "_comment": "Layer 4 faiths. 'head' is the AI-run religious authority; 'holy_war' is what it calls. Seats are [lon, lat]. Province faith comes from culture, with 'regional' overrides by area.",
+  "faiths": [
+    { "id": "catholic", "name": "Catholic", "group": "christian", "color": [0.85, 0.75, 0.30], "head": "Pope", "seat": [12.5, 41.9], "holy_war": "Crusade" },
+    { "id": "orthodox", "name": "Orthodox", "group": "christian", "color": [0.55, 0.35, 0.65], "head": "Patriarch", "seat": [29.0, 41.0], "holy_war": "Crusade" },
+    { "id": "sunni", "name": "Sunni", "group": "muslim", "color": [0.25, 0.55, 0.30], "head": "Caliph", "seat": [44.4, 33.3], "holy_war": "Jihad" },
+    { "id": "shia", "name": "Shia", "group": "muslim", "color": [0.20, 0.45, 0.50], "head": "Imam-Caliph", "seat": [31.2, 30.0], "holy_war": "Jihad" },
+    { "id": "norse_pagan", "name": "Norse pagan", "group": "pagan", "color": [0.55, 0.30, 0.25] },
+    { "id": "baltic_pagan", "name": "Baltic pagan", "group": "pagan", "color": [0.45, 0.50, 0.25] },
+    { "id": "slavic_pagan", "name": "Slavic pagan", "group": "pagan", "color": [0.60, 0.45, 0.25] }
+  ],
+  "culture_faith": {
+    "latin": "catholic", "frankish": "catholic", "germanic": "catholic", "magyar": "catholic",
+    "slavic": "orthodox", "greek": "orthodox", "norse": "norse_pagan", "baltic": "baltic_pagan",
+    "turkic": "sunni", "arab": "sunni", "berber": "sunni"
+  },
+  "regional": [
+    { "faith": "catholic", "lon": 17.5, "lat": 51.0, "rx": 6.0, "ry": 3.5, "_note": "Poland, Bohemia, Croatia lean Catholic" },
+    { "faith": "catholic", "lon": 15.5, "lat": 45.5, "rx": 2.0, "ry": 1.5 },
+    { "faith": "slavic_pagan", "lon": 38.0, "lat": 58.5, "rx": 6.0, "ry": 3.0 },
+    { "faith": "catholic", "lon": -3.0, "lat": 53.5, "rx": 4.0, "ry": 4.0, "_note": "Britain and Ireland" },
+    { "faith": "shia", "lon": 31.0, "lat": 28.5, "rx": 4.0, "ry": 4.5, "_note": "Egypt" },
+    { "faith": "shia", "lon": 47.5, "lat": 31.0, "rx": 3.0, "ry": 2.5 },
+    { "faith": "slavic_pagan", "lon": 47.0, "lat": 53.0, "rx": 5.0, "ry": 4.0 }
+  ],
+  "holy_sites": [
+    { "name": "Jerusalem", "lon": 35.2, "lat": 31.8, "faiths": ["catholic", "orthodox", "sunni", "shia"] },
+    { "name": "Rome", "lon": 12.5, "lat": 41.9, "faiths": ["catholic"] },
+    { "name": "Constantinople", "lon": 29.0, "lat": 41.0, "faiths": ["orthodox"] },
+    { "name": "Baghdad", "lon": 44.4, "lat": 33.3, "faiths": ["sunni"] },
+    { "name": "Cairo", "lon": 31.2, "lat": 30.0, "faiths": ["shia"] }
+  ],
+  "relics": [
+    { "name": "Holy Lance", "effect": "battle", "desc": "+10% strength in battle" },
+    { "name": "Crown of Thorns", "effect": "faith", "desc": "+1 faith a day" },
+    { "name": "Relic of a Martyr", "effect": "happiness", "desc": "+5 happiness everywhere" },
+    { "name": "Golden Reliquary", "effect": "gold", "desc": "+1 gold a day" },
+    { "name": "Sword of a Saint", "effect": "morale", "desc": "+10 morale in battle" },
+    { "name": "Ancient Scriptures", "effect": "faith", "desc": "+1 faith a day" }
+  ]
+}

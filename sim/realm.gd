@@ -38,6 +38,23 @@ var festival_until: int = -1
 var starving := false
 var broke := false
 
+# Layer 4: faith, standing and treaties.
+var faith: String = "catholic"
+var excommunicated := false
+var liege: int = -1            # realm this one is a vassal of
+var glory_until: int = -1      # crusader glory: happier people
+var relics: Array[String] = []
+var memories: Dictionary = {}  # other realm id -> opinion from events (decays)
+var oathbreaker: float = 0.0   # opinion penalty everyone applies (decays)
+
+
+func has_relic_effect(effect: String) -> int:
+	var n := 0
+	for r in relics:
+		if Religion.relic_effect(r) == effect:
+			n += 1
+	return n
+
 
 static func rank_for_size(n: int) -> int:
 	if n >= 16:

@@ -21,6 +21,7 @@ const TERRAIN_TINT := {
 var world: World
 var zoom := 1.0
 var highlight := -1  # selected province
+var mode := "realms"  # realms, faiths, diplomacy
 var _drawn_zoom := -1.0
 
 
@@ -53,9 +54,7 @@ func _draw() -> void:
 		draw_colored_polygon(poly, SEA)
 
 	for p: Province in world.provinces:
-		var fill: Color = TERRAIN_TINT.get(p.terrain, LAND)
-		if p.owner != -1:
-			fill = fill.lerp(world.realms[p.owner].color(), 0.7)
+		var fill := _fill_for(p)
 		for piece: PackedVector2Array in p.polygons:
 			draw_colored_polygon(piece, fill)
 
@@ -108,6 +107,33 @@ func _draw() -> void:
 			draw_polyline(closed, Color(1.0, 0.85, 0.3), _w(3.0), true)
 
 	_draw_frame(size)
+
+
+func _fill_for(p: Province) -> Color:
+	var base: Color = TERRAIN_TINT.get(p.terrain, LAND)
+	match mode:
+		"faiths":
+			return base.lerp(world.religion.color_of(p.faith), 0.65)
+		"diplomacy":
+			var me := world.player_realm
+			if me == -1 or p.owner == -1:
+				return base
+			if p.owner == me:
+				return base.lerp(Color(0.85, 0.7, 0.25), 0.7)
+			if world.at_war(me, p.owner):
+				return base.lerp(Color(0.7, 0.1, 0.08), 0.75)
+			var o := world.diplomacy.opinion(p.owner, me)
+			var col := Color(0.75, 0.25, 0.2).lerp(Color(0.3, 0.65, 0.3), (o + 100.0) / 200.0)
+			if world.diplomacy.has_treaty("alliance", me, p.owner) or world.diplomacy.has_treaty("defensive", me, p.owner):
+				col = Color(0.25, 0.45, 0.8)
+			return base.lerp(col, 0.65)
+	if p.owner == -1:
+		return base
+	var r := world.realms[p.owner]
+	var rc := r.color()
+	if r.liege != -1 and world.realms[r.liege].alive:
+		rc = rc.lerp(world.realms[r.liege].color(), 0.45)
+	return base.lerp(rc, 0.7)
 
 
 func _draw_frame(size: Vector2) -> void:

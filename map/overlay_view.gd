@@ -34,9 +34,95 @@ func _draw() -> void:
 	if world == null:
 		return
 	var s := 1.0 / clampf(zoom, 0.3, 2.0)
+	if zoom >= 0.45:
+		_draw_trade(s)
+	_draw_crusades(s)
 	_draw_occupations(s)
 	_draw_puffs(s)
 	_draw_armies(s)
+
+
+var _clock := 0.0
+
+
+func _route_points(route: Dictionary) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	if route["sea"]:
+		var a := world.provinces[int(route["from"])].center
+		var b := world.provinces[int(route["to"])].center
+		var mid := (a + b) * 0.5 + (b - a).orthogonal() * 0.15
+		for i in 17:
+			var t := i / 16.0
+			pts.append(a.lerp(mid, t).lerp(mid.lerp(b, t), t))
+	else:
+		for pid in route["path"]:
+			pts.append(world.provinces[int(pid)].center)
+	return pts
+
+
+func _draw_trade(s: float) -> void:
+	_clock += get_process_delta_time() * maxf(world.speed, 0.0)
+	for route in world.diplomacy.routes:
+		var pts := _route_points(route)
+		if pts.size() < 2:
+			continue
+		var active := world.diplomacy.route_active(route)
+		var col := Color(0.85, 0.65, 0.15, 0.85) if active else Color(0.4, 0.4, 0.4, 0.6)
+		for i in pts.size() - 1:
+			draw_dashed_line(pts[i], pts[i + 1], col, 2.5 * s, 9.0 * s)
+		if active:
+			# A cart or ship travelling the route.
+			var total := pts.size() - 1
+			var f := fmod(_clock * 0.15 + float(route["from"]) * 0.37, 1.0) * total
+			var seg := mini(int(f), total - 1)
+			var at := pts[seg].lerp(pts[seg + 1], f - seg)
+			if route["sea"]:
+				draw_colored_polygon(PackedVector2Array([at + Vector2(-7, 0) * s, at + Vector2(7, 0) * s, at + Vector2(4, 4) * s, at + Vector2(-4, 4) * s]), Color(0.45, 0.3, 0.18))
+				draw_colored_polygon(PackedVector2Array([at, at + Vector2(0, -9) * s, at + Vector2(6, -1) * s]), Color(0.96, 0.93, 0.85))
+			else:
+				draw_rect(Rect2(at + Vector2(-5, -4) * s, Vector2(10, 6) * s), Color(0.6, 0.42, 0.22))
+				draw_circle(at + Vector2(-3, 3) * s, 2.0 * s, INK)
+				draw_circle(at + Vector2(3, 3) * s, 2.0 * s, INK)
+		if zoom >= 0.9:
+			var mid := pts[pts.size() / 2]
+			var label := str(route["goods"])
+			var fs := int(11.0 * s)
+			var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			draw_string_outline(font, mid + Vector2(-w * 0.5, -8 * s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, int(3 * s), PAPER)
+			draw_string(font, mid + Vector2(-w * 0.5, -8 * s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.5, 0.35, 0.05))
+
+
+func _draw_crusades(s: float) -> void:
+	for c in world.religion.crusades:
+		var target := world.provinces[int((c["provinces"] as Array)[0])]
+		var col := world.religion.color_of(str(c["faith"]))
+		# Banner over the target.
+		var top := target.center + Vector2(0, -60) * s
+		draw_circle(top, 13.0 * s, Color(0.97, 0.94, 0.85))
+		draw_arc(top, 13.0 * s, 0, TAU, 24, col.darkened(0.3), 3.0 * s)
+		if world.religion.group_of(str(c["faith"])) == "christian":
+			draw_line(top + Vector2(0, -8) * s, top + Vector2(0, 8) * s, Color(0.7, 0.1, 0.08), 3.5 * s)
+			draw_line(top + Vector2(-6, -2) * s, top + Vector2(6, -2) * s, Color(0.7, 0.1, 0.08), 3.5 * s)
+		else:
+			draw_arc(top, 7.0 * s, PI * 0.35, PI * 1.65, 16, Color(0.15, 0.45, 0.25), 3.0 * s)
+		if c["phase"] != "war":
+			continue
+		# Arrows from each crusader's capital.
+		for rid in c["members"]:
+			var r := world.realms[int(rid)]
+			if not r.alive or r.capital == -1:
+				continue
+			var from := world.provinces[r.capital].center
+			var to := target.center
+			var mid := (from + to) * 0.5 + (to - from).orthogonal() * 0.12
+			var prev := from
+			for i in range(1, 13):
+				var t := i / 12.0
+				var pt := from.lerp(mid, t).lerp(mid.lerp(to, t), t)
+				draw_line(prev, pt, Color(col, 0.75), 4.0 * s)
+				prev = pt
+			var dir := (to - from).normalized()
+			draw_colored_polygon(PackedVector2Array([to, to - dir * 14.0 * s + dir.orthogonal() * 8.0 * s, to - dir * 14.0 * s - dir.orthogonal() * 8.0 * s]), Color(col, 0.85))
 
 
 func _draw_occupations(s: float) -> void:

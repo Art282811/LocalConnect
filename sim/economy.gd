@@ -97,6 +97,18 @@ func happiness_parts(p: Province) -> Array:
 		parts.append(["War weariness", -minf(r.enemies.size() * 5.0, 15.0)])
 	if p.culture != r.culture:
 		parts.append(["Foreign rulers", -10.0])
+	if p.faith != r.faith:
+		var related := world.religion.group_of(p.faith) == world.religion.group_of(r.faith)
+		parts.append(["Ruler of another faith", -5.0 if related else -12.0])
+	if p.mission_until > world.day:
+		parts.append(["Missionaries", -8.0])
+	if r.excommunicated and p.faith == r.faith:
+		parts.append(["Excommunicated ruler", -10.0])
+	if r.glory_until > world.day:
+		parts.append(["Crusader glory", 10.0])
+	var relic_joy := r.has_relic_effect("happiness")
+	if relic_joy > 0:
+		parts.append(["Holy relics", 5.0 * relic_joy])
 	if p.occupied_until > world.day:
 		parts.append(["Recently conquered", -15.0])
 	var church := p.building_level("church")
@@ -219,6 +231,11 @@ func tick_day() -> void:
 			r.delta[k] = float(r.delta[k]) + float(y[k])
 		r.delta["food"] = float(r.delta["food"]) - p.pop * FOOD_PER_PERSON
 		_construct(p, r)
+	world.diplomacy.daily_trade()
+	for r: Realm in world.realms:
+		if r.alive and not r.relics.is_empty():
+			r.delta["faith"] = float(r.delta["faith"]) + r.has_relic_effect("faith")
+			r.delta["gold"] = float(r.delta["gold"]) + r.has_relic_effect("gold")
 	for a: Army in world.armies:
 		if a.dead:
 			continue

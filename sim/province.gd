@@ -29,6 +29,13 @@ var build_id: String = ""      # under construction, "" = nothing
 var build_left: float = 0.0    # days of work left
 var occupied_until: int = -1   # recently conquered: unhappy until this day
 
+# Layer 4: faith.
+var faith: String = "catholic"
+var mission_until: int = -1    # missionaries at work until this day
+var mission_faith: String = ""
+var holy_site: String = ""     # e.g. "Jerusalem"
+var sacred: Array = []         # faiths that hold the holy site sacred
+
 
 func building_level(id: String) -> int:
 	return int(buildings.get(id, 0))

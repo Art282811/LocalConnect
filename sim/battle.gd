@@ -31,6 +31,8 @@ var general: Array[String] = ["", ""]
 var trait_of: Array[String] = ["steady", "steady"]
 var skill: Array[int] = [0, 0]
 var stance: Array[int] = [1, 1]
+var might: Array[float] = [1.0, 1.0]   # holy relics
+var spirit: Array[float] = [0.0, 0.0]
 var commanded: Array[bool] = [false, false]
 var withdrawing: Array[bool] = [false, false]
 var withdraw_time: Array[float] = [0.0, 0.0]
@@ -155,7 +157,10 @@ func add_army(a: Army, side: int) -> void:
 		trait_of[side] = a.general_trait
 		skill[side] = a.skill
 		stance[side] = a.stance
-	var culture := world.realms[a.realm].culture
+	var realm := world.realms[a.realm]
+	might[side] = 1.0 + 0.1 * realm.has_relic_effect("battle")
+	spirit[side] = 10.0 * realm.has_relic_effect("morale")
+	var culture := realm.culture
 	var regs := _make_regiments(float(a.troops), a.quality, _composition(culture, a.quality), a.id, side)
 	var dug := a.order == "hold" and a.dug_in >= 4.0
 	for r: Regiment in regs:
@@ -187,7 +192,7 @@ func _make_regiments(total: float, quality: float, comp: Dictionary, army_id: in
 			r.kind = kind
 			r.men = m / n
 			r.quality = quality
-			r.base_morale = 62.0 + quality * 10.0 + skill[side] * 3.0
+			r.base_morale = 62.0 + quality * 10.0 + skill[side] * 3.0 + spirit[side]
 			r.morale = r.base_morale
 			out.append(r)
 			placed += r.men
@@ -644,7 +649,7 @@ func _fight() -> void:
 func _strike(att: Regiment, def: Regiment, damage: Dictionary, shock: Dictionary) -> void:
 	var k: Dictionary = KINDS[att.kind]
 	var flank := _flank(def, att.pos)
-	var dmg := att.men * 0.010 * float(k["melee"]) * sqrt(att.quality) * (1.0 + skill[att.side] * 0.04)
+	var dmg := att.men * 0.010 * float(k["melee"]) * sqrt(att.quality) * (1.0 + skill[att.side] * 0.04) * might[att.side]
 	if def.is_cavalry():
 		dmg *= float(k["vs_cav"])
 	if att.is_cavalry() and def.formation == "square":

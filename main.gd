@@ -17,6 +17,9 @@ var selected_battle := -1
 var selected_regiment := -1
 var _pending := ""      # "raid" or "join": the next tap picks the target
 var _alert_index := 0
+var _diplo_target := -1
+var _mode_timer := 0.0
+const MAP_MODES := ["realms", "faiths", "diplomacy"]
 var _ui_timer := 0.0
 
 
@@ -46,6 +49,7 @@ func _ready() -> void:
 	hud.rise_again_pressed.connect(_on_rise_again)
 	hud.realm_pressed.connect(_show_realm)
 	hud.battle_alert_pressed.connect(_on_battle_alert)
+	hud.map_mode_pressed.connect(_on_map_mode)
 
 	randomize()
 	_new_world(randi())
@@ -71,6 +75,8 @@ func _new_world(seed_value: int) -> void:
 	hud.set_speed(0)
 	hud.set_steward(false)
 	hud.hide_info()
+	map_view.mode = "realms"
+	hud.set_map_mode("Realms")
 
 
 func _process(delta: float) -> void:
@@ -81,6 +87,11 @@ func _process(delta: float) -> void:
 	if _ui_timer >= 0.25:
 		_ui_timer = 0.0
 		_refresh_hud()
+	if map_view.mode == "diplomacy":
+		_mode_timer += delta
+		if _mode_timer > 2.0:
+			_mode_timer = 0.0
+			map_view.queue_redraw()
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -189,6 +200,11 @@ func _refresh_hud() -> void:
 			hud.hide_info()
 		else:
 			hud.update_info_body(_battle_text(b))
+	elif _info_kind == "diplomacy" and _diplo_target != -1:
+		if world.realms[_diplo_target].alive and world.player_realm != -1:
+			hud.update_info_body(_diplomacy_text(_diplo_target))
+	elif _info_kind == "crusades":
+		hud.update_info_body(_crusades_text())
 	elif _info_kind == "realm":
 		if world.player_realm == -1:
 			_info_kind = ""
@@ -367,6 +383,11 @@ func _army_actions(a: Army) -> Array:
 	if p.owner != -1 and world.at_war(a.realm, p.owner) and a.path.is_empty():
 		actions.append(["Assault walls (garrison ~%d)" % int(world.garrison_size(p)), _act_assault.bind(a.id)])
 	actions.append(["Halt", _act_halt.bind(a.id)])
+	var c := world.religion.active_crusade(world.realms[a.realm].faith)
+	if not c.is_empty():
+		var leader := world.religion.lead_realm(c)
+		if leader != -1 and leader != a.realm:
+			actions.append(["Lend to the %s" % c["name"], _act_lend.bind(a.id, int(c["id"]))])
 	return actions
 
 
@@ -571,6 +592,7 @@ func _show_province(pid: int) -> void:
 	elif world.player_realm != -1 and p.owner != -1 and p.owner != world.player_realm:
 		var me := world.player_realm
 		var them := p.owner
+		actions.append(["Diplomacy…", _show_diplomacy.bind(them)])
 		if world.at_war(me, them):
 			actions.append(["Offer peace", _act_offer_peace.bind(them, pid)])
 		else:
@@ -578,12 +600,19 @@ func _show_province(pid: int) -> void:
 			var ok := truce_end <= world.day
 			var label := "Declare war" if ok else "Truce until Y%d" % (truce_end / World.DAYS_PER_YEAR + 1)
 			actions.append([label, _act_declare_war.bind(them, pid), ok])
+		var why := world.religion.launch_problem(world.realms[me], pid)
+		if world.religion.group_of(world.realms[them].faith) != world.religion.group_of(world.realms[me].faith):
+			var hw := world.religion.holy_war_name(world.realms[me].faith)
+			actions.append(["Call a %s here" % hw if why == "" else "%s: %s" % [hw, why], _act_launch.bind(pid), why == ""])
 	elif world.player_realm != -1 and p.owner == world.player_realm:
 		var r := world.realms[p.owner]
 		var eco := world.economy
 		actions.append(["Build…", _show_build_menu.bind(pid), p.build_id == ""])
 		var levy := eco.levy_problem(r, p)
 		actions.append(["Raise levy (%d men, %dg)" % [Economy.LEVY_SIZE, int(Economy.LEVY_GOLD)] if levy == "" else "Levy: " + levy, _act_levy.bind(pid), levy == ""])
+		if p.faith != r.faith:
+			var mp := world.religion.mission_problem(r, p)
+			actions.append(["Send missionaries (%d faith)" % int(Religion.MISSION_COST) if mp == "" else "Missionaries: " + mp, _act_mission.bind(pid), mp == ""])
 		if p.building_level("barracks") > 0:
 			var maa := eco.maa_problem(r, p)
 			actions.append(["Men-at-arms (%d, %dg %d iron)" % [Economy.MAA_SIZE, int(Economy.MAA_GOLD), int(Economy.MAA_IRON)] if maa == "" else "Men-at-arms: " + maa, _act_maa.bind(pid), maa == ""])
@@ -689,6 +718,11 @@ func _show_realm() -> void:
 	actions.append(["Hold festival (%dg)" % int(Economy.FESTIVAL_COST), _act_festival, fest_ok])
 	if r.capital != -1:
 		actions.append(["Go to capital", _act_go_capital])
+	if world.religion.has_head(r.faith):
+		var title := world.religion.head_title(r.faith)
+		actions.append(["Donate to the %s (%dg)" % [title, int(Religion.DONATION)], _act_donate, float(r.res["gold"]) >= Religion.DONATION])
+	actions.append(["Offers (%d)" % world.diplomacy.offers.size(), _show_offers, not world.diplomacy.offers.is_empty()])
+	actions.append(["Holy wars (%d)" % world.religion.crusades.size(), _show_crusades])
 	hud.show_info(r.full_name(), _realm_text(r), actions)
 
 
@@ -707,6 +741,27 @@ func _realm_text(r: Realm) -> String:
 	var text := "%d provinces · %d people · average happiness %d\n" % [r.provinces.size(), int(pop), int(mood / n)]
 	text += "Taxes: [b]%s[/b] · troops %d · manpower %d / %d\n" % [Economy.TAX_NAMES[r.tax], world.realm_troops(r), int(r.manpower), int(eco.manpower_cap(r))]
 	text += "Constructions under way: %d\n" % building
+	var rel := world.religion
+	text += "Faith: [b]%s[/b]" % rel.faith_name(r.faith)
+	if rel.has_head(r.faith):
+		text += " · the %s thinks of you %+d" % [rel.head_title(r.faith), int(rel.head_opinion(r))]
+	if r.excommunicated:
+		text += " · [color=#9a2a1a]EXCOMMUNICATED[/color]"
+	text += "\n"
+	if not r.relics.is_empty():
+		text += "Relics: %s\n" % ", ".join(PackedStringArray(r.relics))
+	var trade := world.diplomacy.trade_income(r.id)
+	if trade > 0.0:
+		text += "Trade routes bring %.1f gold a day\n" % trade
+	var pacts := PackedStringArray()
+	for t in world.diplomacy.treaties:
+		if int(t["a"]) == r.id or int(t["b"]) == r.id:
+			var other := int(t["b"]) if int(t["a"]) == r.id else int(t["a"])
+			pacts.append("%s with %s" % [Diplomacy.TREATY_NAMES[t["type"]], world.realms[other].name])
+	if not pacts.is_empty():
+		text += "Treaties: %s\n" % ", ".join(pacts)
+	if r.liege != -1:
+		text += "You are a vassal of the %s.\n" % world.realms[r.liege].full_name()
 	if r.festival_until > world.day:
 		text += "Festival: %d days left\n" % (r.festival_until - world.day)
 	if r.starving:
@@ -725,6 +780,200 @@ func _act_tax(level: int) -> void:
 func _act_festival() -> void:
 	world.economy.hold_festival(world.realms[world.player_realm])
 	_show_realm()
+
+
+func _act_donate() -> void:
+	if world.religion.donate(world.realms[world.player_realm]):
+		hud.add_news("Your gift pleases the %s." % world.religion.head_title(world.realms[world.player_realm].faith))
+	_show_realm()
+
+
+func _act_mission(pid: int) -> void:
+	if world.religion.start_mission(world.realms[world.player_realm], world.provinces[pid]):
+		hud.add_news("Missionaries set out for %s." % world.provinces[pid].name)
+	_show_province(pid)
+
+
+func _act_launch(pid: int) -> void:
+	if world.religion.launch(world.realms[world.player_realm], pid):
+		_show_crusades()
+
+
+func _on_map_mode() -> void:
+	var i := (MAP_MODES.find(map_view.mode) + 1) % MAP_MODES.size()
+	map_view.mode = MAP_MODES[i]
+	hud.set_map_mode(str(MAP_MODES[i]).capitalize())
+	map_view.queue_redraw()
+
+
+# --- Diplomacy screen -------------------------------------------------------------------
+
+const PROPOSALS := [
+	["gift", "Send a gift (50g)"], ["nap", "Non-aggression pact"], ["alliance", "Alliance"],
+	["defensive", "Defensive pact"], ["trade", "Trade agreement"], ["tribute", "Demand tribute"],
+	["vassal", "Demand vassalage"], ["offer_vassal", "Become their vassal"], ["insult", "Insult them"],
+]
+
+
+func _show_diplomacy(rid: int) -> void:
+	_clear_selection()
+	_info_kind = "diplomacy"
+	_diplo_target = rid
+	var me := world.player_realm
+	var dip := world.diplomacy
+	var actions: Array = []
+	for prop in PROPOSALS:
+		var kind: String = prop[0]
+		var label: String = prop[1]
+		if kind in ["nap", "alliance", "defensive", "trade"] and dip.has_treaty(kind, me, rid):
+			actions.append(["Cancel " + label.to_lower(), _act_break.bind(kind, rid)])
+			continue
+		if kind == "tribute" and dip.has_treaty("tribute", me, rid):
+			continue
+		if (kind == "vassal" or kind == "offer_vassal") and (dip.has_treaty("vassal", me, rid) or dip.has_treaty("vassal", rid, me)):
+			continue
+		var enabled := true
+		if not (kind in ["gift", "insult"]):
+			var verdict := dip.evaluate(kind, me, rid)
+			label += " (likely)" if verdict[0] else " (unlikely)"
+			enabled = dip.cooldown_left(me, rid, kind) == 0 and not world.at_war(me, rid)
+		elif kind == "gift":
+			enabled = float(world.realms[me].res["gold"]) >= Diplomacy.GIFT_GOLD
+		actions.append([label, _act_propose.bind(kind, rid), enabled])
+	if dip.has_treaty("vassal", me, rid):
+		actions.append(["Release vassal", _act_break.bind("vassal_release", rid)])
+	actions.append(["Back", _show_province.bind(world.realms[rid].capital)])
+	hud.show_info("Diplomacy: %s" % world.realms[rid].full_name(), _diplomacy_text(rid), actions)
+
+
+func _diplomacy_text(rid: int) -> String:
+	var me := world.player_realm
+	var them := world.realms[rid]
+	var dip := world.diplomacy
+	var text := "%s · %s ruler · %d provinces\n" % [world.religion.faith_name(them.faith), them.personality, them.provinces.size()]
+	text += "Strength: theirs %d vs yours %d\n" % [int(world.realm_strength(them)), int(world.realm_strength(world.realms[me]))]
+	text += "They think of you: [b]%+d[/b]\n" % int(dip.opinion(rid, me))
+	var bits := PackedStringArray()
+	for part in dip.opinion_parts(rid, me):
+		bits.append("%s %+d" % [part[0], int(part[1])])
+	text += "[font_size=14]%s[/font_size]\n" % ", ".join(bits)
+	text += "You think of them: %+d\n" % int(dip.opinion(me, rid))
+	var friends := PackedStringArray()
+	for a in dip.allies_of(rid, ["alliance", "defensive"]):
+		friends.append(world.realms[a].name)
+	if not friends.is_empty():
+		text += "Their allies: %s\n" % ", ".join(friends)
+	if them.oathbreaker >= 1.0:
+		text += "[color=#9a2a1a]Known oathbreaker[/color]\n"
+	return text
+
+
+func _act_propose(kind: String, rid: int) -> void:
+	var result := world.diplomacy.propose(kind, world.player_realm, rid)
+	if result != "":
+		hud.add_news(result)
+	_show_diplomacy(rid)
+
+
+func _act_break(kind: String, rid: int) -> void:
+	if kind == "vassal_release":
+		world.diplomacy.remove_treaty("vassal", world.player_realm, rid)
+	else:
+		world.diplomacy.break_treaty(kind, world.player_realm, rid)
+	hud.add_news("Treaty with %s ended." % world.realms[rid].name)
+	_show_diplomacy(rid)
+
+
+func _show_offers() -> void:
+	_clear_selection()
+	_info_kind = "offers"
+	var actions: Array = []
+	var text := ""
+	for o in world.diplomacy.offers:
+		text += "• %s [i](%d days to answer)[/i]\n" % [o["text"], int(o["expires"]) - world.day]
+		var who := world.realms[int(o["from"])].name
+		actions.append(["Accept: %s" % who, _act_answer.bind(int(o["id"]), true)])
+		actions.append(["Refuse: %s" % who, _act_answer.bind(int(o["id"]), false)])
+	if text == "":
+		text = "No envoys are waiting."
+	actions.append(["Back", _show_realm])
+	hud.show_info("Envoys at court", text, actions)
+
+
+func _act_answer(offer_id: int, accept: bool) -> void:
+	world.diplomacy.answer_offer(offer_id, accept)
+	if world.diplomacy.offers.is_empty():
+		_show_realm()
+	else:
+		_show_offers()
+
+
+# --- Holy wars ---------------------------------------------------------------------------
+
+func _show_crusades() -> void:
+	_clear_selection()
+	_info_kind = "crusades"
+	var me: Realm = world.realms[world.player_realm] if world.player_realm != -1 else null
+	var rel := world.religion
+	var actions: Array = []
+	for c in rel.crusades:
+		if me == null:
+			continue
+		var cid := int(c["id"])
+		if c["faith"] == me.faith:
+			var jp := rel.join_problem(c, me)
+			if jp == "":
+				actions.append(["Join the %s" % c["name"], _act_join_crusade.bind(cid)])
+			actions.append(["Pledge %dg" % int(Religion.PLEDGE_GOLD), _act_pledge.bind(cid), float(me.res["gold"]) >= Religion.PLEDGE_GOLD])
+	actions.append(["Back", _show_realm])
+	hud.show_info("Holy wars", _crusades_text(), actions)
+
+
+func _crusades_text() -> String:
+	var rel := world.religion
+	var text := ""
+	for c in rel.crusades:
+		var target := world.realms[int(c["target_realm"])]
+		var members := PackedStringArray()
+		for rid in c["members"]:
+			members.append(world.realms[int(rid)].name)
+		var days_left := Religion.GATHER_DAYS - (world.day - int(c["start"])) if c["phase"] == "gathering" else Religion.CRUSADE_DAYS - (world.day - int(c["start"]))
+		text += "[b]%s[/b] (%s faith) against the %s\n" % [c["name"], rel.faith_name(str(c["faith"])), target.full_name()]
+		text += "%s · %d days left · %s\n" % ["Gathering" if c["phase"] == "gathering" else "At war", days_left, ("Crusaders: " + ", ".join(members)) if not members.is_empty() else "No one has joined yet"]
+		var held := 0
+		for pid in c["provinces"]:
+			var o := world.provinces[int(pid)].owner
+			if o != -1 and (c["members"] as Dictionary).has(o):
+				held += 1
+		text += "Target lands taken: %d / %d\n\n" % [held, (c["provinces"] as Array).size()]
+	if text == "":
+		text = "No holy war is under way.\n\n"
+	if world.year() < Religion.CRUSADE_MIN_YEAR:
+		text += "Holy wars can be called from Year %d.\n" % Religion.CRUSADE_MIN_YEAR
+	text += "[i]Join to fight, pledge gold to share the blessing, or lend an army (tap your army). To call your own, tap a province ruled by unbelievers (needs %d faith and the favour of your faith's head).[/i]" % int(Religion.LAUNCH_FAITH)
+	return text
+
+
+func _act_join_crusade(cid: int) -> void:
+	var c := world.religion.crusade_by_id(cid)
+	if not c.is_empty():
+		world.religion.join(c, world.realms[world.player_realm])
+	_show_crusades()
+
+
+func _act_pledge(cid: int) -> void:
+	var c := world.religion.crusade_by_id(cid)
+	if not c.is_empty() and world.religion.pledge(c, world.realms[world.player_realm]):
+		hud.add_news("Your gold goes to the %s." % c["name"])
+	_show_crusades()
+
+
+func _act_lend(army_id: int, cid: int) -> void:
+	var c := world.religion.crusade_by_id(cid)
+	var a := world.army_by_id(army_id)
+	if not c.is_empty() and a != null and world.religion.lend_army(c, a):
+		_clear_selection()
+		hud.hide_info()
 
 
 func _act_go_capital() -> void:
@@ -756,7 +1005,22 @@ func _province_text(pid: int) -> String:
 			text += " · capital"
 		if not r.enemies.is_empty():
 			text += "\nAt war with " + _realm_list(r.enemies.keys())
-		text += "\nPopulation %d · happiness %d" % [int(p.pop), int(p.happiness)]
+		text += "\nPopulation %d · happiness %d · %s faith" % [int(p.pop), int(p.happiness), world.religion.faith_name(p.faith)]
+		if p.holy_site != "":
+			text += " · [b]holy site of %s[/b]" % p.holy_site
+		if p.mission_until > world.day:
+			text += " · missionaries at work (%d days)" % (p.mission_until - world.day)
+		if world.player_realm != -1 and p.owner != world.player_realm:
+			var me := world.player_realm
+			var o := int(world.diplomacy.opinion(p.owner, me))
+			text += "\nThey think of you: [b]%+d[/b]" % o
+			var pacts := PackedStringArray()
+			for t in world.diplomacy.treaties_between(me, p.owner):
+				pacts.append(str(Diplomacy.TREATY_NAMES[t["type"]]))
+			if not pacts.is_empty():
+				text += " · " + ", ".join(pacts)
+		if r.liege != -1:
+			text += "\nVassal of the %s" % world.realms[r.liege].full_name()
 		if p.happiness < 30.0:
 			text += " [color=#9a2a1a](rioting)[/color]"
 		if r.is_player:
