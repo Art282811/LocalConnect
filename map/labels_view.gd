@@ -58,24 +58,34 @@ func _draw() -> void:
 			if detail:
 				_draw_villages(p)
 			draw_settlement(self, p.center, p.settlement, p.level + (1 if is_cap else 0), icon_scale, is_cap)
-			if p.build_id != "" and p.build_id != "bridge":
+			var mine := p.owner != -1 and world.realms[p.owner].is_player
+			if mine and p.build_id != "" and p.build_id != "bridge":
 				var total := world.economy.days_of(p.build_id, p.building_level(p.build_id) + 1)
 				_scaffold(p.center + Vector2(20, -6) * icon_scale, icon_scale, 1.0 - p.build_left / maxf(total, 1.0))
 		elif is_cap and world.realms[p.owner].provinces.size() >= 3:
 			draw_settlement(self, p.center, "castle", 2, icon_scale * 0.8, true)
 
+	# Province names only where they fit: towns, cities and your own land first,
+	# every village once you are close enough to read them all.
 	if region and zoom < 4.0:
-		var fs := int(clampf(13.0 / zoom, 4.0, 40.0))
+		var fs := int(clampf(12.0 / zoom, 4.0, 22.0))
+		var all_names := zoom >= 0.95
 		for p: Province in world.provinces:
-			_text_centered(p.name, p.center + Vector2(0, 22.0 * icon_scale + fs * 0.6), fs, INK, PAPER, 3)
+			var mine := p.owner != -1 and world.realms[p.owner].is_player
+			var notable := p.level >= 2 or (p.owner != -1 and world.realms[p.owner].capital == p.id)
+			if all_names or mine or notable:
+				_text_centered(p.name, p.center + Vector2(0, 22.0 * icon_scale + fs * 0.6), fs, Color(INK, 0.85), Color(PAPER, 0.7), 2)
 
-	_draw_realm_names(region)
+	_draw_realm_names()
 
 
-func _draw_realm_names(region: bool) -> void:
-	if zoom > 1.4:
+## Realm names belong to the big picture: they fade out as you zoom in and are
+## gone by the time provinces and towns take over.
+func _draw_realm_names() -> void:
+	var alpha := clampf((REGION_ZOOM - zoom) / (REGION_ZOOM - 0.42), 0.0, 1.0) * 0.9
+	if alpha <= 0.02:
 		return
-	var alpha := 0.3 if region else 0.9
+	var region := false
 	for r: Realm in world.realms:
 		if not r.alive or r.provinces.is_empty():
 			continue
@@ -95,7 +105,7 @@ func _draw_realm_names(region: bool) -> void:
 		if n >= 3 and not region:
 			var w := serif.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 			Heraldry.draw_shield(self, c - Vector2(w * 0.5 + size * 0.7, 0), size * 1.1, r, maxf(size / 25.0, 1.0))
-		if n >= 3:
+		if n >= 7:
 			_text_centered(r.title().to_upper(), c - Vector2(0, size * 0.75), int(size * 0.4), col, Color(PAPER, alpha * 0.8), 2)
 
 

@@ -13,7 +13,7 @@ signal battle_ended(b: Battle)
 signal dynasty_lost(text: String, can_continue: bool)
 
 # --- Tuning knobs ---------------------------------------------------------
-const DAY_SECONDS := 1.5          # real seconds per in-game day at 1x
+const DAY_SECONDS := 2.0          # real seconds per in-game day at 1x
 ## Pace of life: how many days make a year. Days set the pace of marching and
 ## building; years set how fast people age. Longer years = longer reigns.
 static var DAYS_PER_YEAR := 720

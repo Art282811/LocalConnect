@@ -342,7 +342,10 @@ func _banner(a: Army, at: Vector2, s_in: float) -> void:
 	if r.is_player:
 		draw_circle(top + Vector2(0, -3) * s, 3.0 * s, Color(0.95, 0.75, 0.2))
 	# Troop count plaque.
-	if far and not r.is_player and a.troops < 2000 and a.id != selected_army:
+	var me := world.player_realm
+	var relevant := r.is_player or a.id == selected_army or a.province == hover_province \
+		or (me != -1 and world.at_war(me, a.realm)) or (me == -1 and not far)
+	if not relevant:
 		return
 	var text := _short(a.troops)
 	var fs := int(13.0 * s)

@@ -211,6 +211,59 @@ func why_not(p: Province, id: String) -> String:
 	return ""
 
 
+## What the next level of `id` would add in this province, in plain words,
+## e.g. "+0.8 gold a day" or "+4 happiness, +0.4 faith a day".
+func gain_text(p: Province, id: String) -> String:
+	if p.owner == -1:
+		return ""
+	var bits := PackedStringArray()
+	var old := p.building_level(id)
+	var before := yields(p)
+	p.buildings[id] = old + 1
+	var after := yields(p)
+	var mp_before := 0.0
+	var mp_after := 0.0
+	if id == "barracks":
+		mp_after = p.pop * 0.05 * (1.0 + 0.3 * (old + 1))
+		mp_before = p.pop * 0.05 * (1.0 + 0.3 * old)
+	if old == 0:
+		p.buildings.erase(id)
+	else:
+		p.buildings[id] = old
+	for k in RESOURCES:
+		var d := float(after[k]) - float(before[k])
+		if absf(d) >= 0.05:
+			bits.append("%+.1f %s a day" % [d, k])
+	match id:
+		"farm":
+			bits.append("room for 700 more people")
+		"granary":
+			bits.append("room for 900 more people, better winters")
+		"church":
+			bits.append("+4 happiness")
+		"tavern":
+			bits.append("+5 happiness")
+		"barracks":
+			bits.append("+%d men a month; lets you hire men-at-arms here" % int(mp_after - mp_before))
+		"blacksmith":
+			bits.append("men-at-arms hired here fight 15% harder")
+		"walls":
+			bits.append("sieges here take much longer")
+		"road":
+			bits.append("armies and caravans %d%% faster here" % (25 if old == 0 else 40))
+		"bridge":
+			bits.append("no delay crossing the river")
+		"watchtower":
+			bits.append("bandits strike here and next door 65% less")
+		"caravanserai":
+			bits.append("trade routes through here earn more and are safer")
+		"port":
+			bits.append("lets you found sea-side trade routes")
+		"market":
+			bits.append("lets you found trade routes from here")
+	return ", ".join(bits)
+
+
 func start_building(p: Province, id: String) -> bool:
 	if why_not(p, id) != "":
 		return false

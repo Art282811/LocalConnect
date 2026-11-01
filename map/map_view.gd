@@ -184,33 +184,35 @@ func _draw_frame(size: Vector2) -> void:
 
 func _draw_terrain_glyphs() -> void:
 	var ink := Color(INK, 0.55)
+	var few := zoom < 1.0   # one doodle per province until you are close
 	for p: Province in world.provinces:
+		var glyphs := p.glyphs if not few or p.glyphs.size() <= 1 else p.glyphs.slice(0, 1)
 		match p.terrain:
 			"mountains":
-				for g: Vector2 in p.glyphs:
+				for g: Vector2 in glyphs:
 					var pts := PackedVector2Array([g + Vector2(-13, 8), g + Vector2(0, -12), g + Vector2(13, 8)])
 					draw_colored_polygon(pts, Color(0.62, 0.55, 0.46))
 					draw_colored_polygon(PackedVector2Array([g + Vector2(-4, -6), g + Vector2(0, -12), g + Vector2(4, -6)]), Color(0.97, 0.95, 0.9))
 					draw_polyline(pts, ink, 1.5, true)
 			"hills":
-				for g: Vector2 in p.glyphs:
+				for g: Vector2 in glyphs:
 					draw_arc(g, 10.0, PI * 1.1, PI * 1.9, 10, ink, 1.5, true)
 					draw_arc(g + Vector2(10, 4), 7.0, PI * 1.1, PI * 1.9, 8, ink, 1.5, true)
 			"forest":
-				for g: Vector2 in p.glyphs:
+				for g: Vector2 in glyphs:
 					for off in [Vector2(-7, 2), Vector2(6, 0), Vector2(0, -5)]:
 						var t: Vector2 = g + off
 						draw_line(t, t + Vector2(0, 8), ink, 1.5)
 						draw_circle(t, 5.5, Color(0.42, 0.53, 0.33))
 			"marsh":
-				for g: Vector2 in p.glyphs:
+				for g: Vector2 in glyphs:
 					for i in 3:
 						var row := g + Vector2(0, i * 5 - 5)
 						draw_line(row + Vector2(-9 + i * 2, 0), row + Vector2(7 - i, 0), ink, 1.2)
 					draw_line(g + Vector2(-3, -8), g + Vector2(-5, -14), ink, 1.2)
 					draw_line(g + Vector2(2, -8), g + Vector2(3, -15), ink, 1.2)
 			"desert":
-				for g: Vector2 in p.glyphs:
+				for g: Vector2 in glyphs:
 					draw_arc(g, 12.0, PI * 1.2, PI * 1.8, 10, Color(0.68, 0.55, 0.32), 1.5, true)
 					draw_circle(g + Vector2(-6, 6), 1.5, ink)
 					draw_circle(g + Vector2(5, 7), 1.5, ink)

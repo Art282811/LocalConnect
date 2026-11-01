@@ -31,7 +31,7 @@ var _on_title := true
 const TUTORIAL := [
 	["Welcome! [b]Drag[/b] to move the map, [b]pinch or scroll[/b] to zoom. Tap any province to choose where your dynasty begins: empty land founds a new realm, owned land takes over a realm.", "spawn"],
 	["This is your realm. Find your army (the [b]banner with a number[/b]) and tap it.", "army_selected"],
-	["Now tap a nearby [b]unclaimed[/b] province (plain parchment). Your army marches there and claims it.", "army_ordered"],
+	["Now send it to a nearby [b]unclaimed[/b] province (plain parchment): [b]right-click[/b] it or [b]drag[/b] your army onto it (on a phone: tap it, then [b]March here[/b]). Standing there claims it.", "army_ordered"],
 	["While they march, tap your [b]capital[/b] and choose [b]Build…[/b]. Farms feed your people; markets bring gold.", "building"],
 	["The bar under the top shows your [b]food, gold, wood, stone, iron and faith[/b] and how they change each day. Tap [b]Realm[/b] to set taxes or hold a festival.", "realm_open"],
 	["Tap [b]Dynasty[/b] to meet your family, your heir and the great families. If your line ends, you lose.", "dynasty_open"],
@@ -265,9 +265,9 @@ func _refresh_hud() -> void:
 	_maybe_show_event()
 	if world.player_realm != -1:
 		var r := world.realms[world.player_realm]
-		var text := "%s · %d provinces · %d troops" % [r.full_name(), r.provinces.size(), world.realm_troops(r)]
+		var text := "%s · %d prov. · %s men" % [r.name, r.provinces.size(), OverlayView._short(world.realm_troops(r))]
 		if not r.enemies.is_empty():
-			text += " · at war with " + _realm_list(r.enemies.keys())
+			text += " · at war (%d)" % r.enemies.size()
 		hud.set_realm_text(text)
 		hud.set_resources(_resource_bar(r))
 	elif world.spawn_mode:
@@ -382,8 +382,12 @@ func _on_tap(world_pos: Vector2, screen_pos: Vector2) -> void:
 	if army_id != -1 and army_id != selected_army:
 		_select_army(army_id)
 		return
+	if army_id != -1 and army_id == selected_army:
+		_clear_selection()
+		hud.hide_info()
+		return
 
-	if selected_army != -1 and _order_selected(pid):
+	if selected_army != -1 and _pending == "raid" and _order_selected(pid):
 		return
 
 	if pid == -1:
@@ -587,8 +591,15 @@ func _army_at(screen_pos: Vector2) -> int:
 	return best
 
 
+## Opens the province panel. Your selected army stays selected, so the panel
+## can offer "March here" and the route preview keeps working.
 func _select_province(pid: int) -> void:
+	var keep := selected_army
+	var a := world.army_by_id(keep)
 	_clear_selection()
+	if a != null and a.realm == world.player_realm:
+		selected_army = keep
+		overlay.selected_army = keep
 	selected_province = pid
 	_info_kind = "province"
 	map_view.highlight = pid
@@ -709,7 +720,7 @@ func _army_text(a: Army) -> String:
 	if a.order == "raid" and a.path.is_empty():
 		text += "\nRaiding: day %d of 20" % a.raid_days
 	if r.is_player:
-		text += "\n[i]Hover a province to see the route. Click or right-click to march, or drag the army there.[/i]"
+		text += "\n[i]Hover a province to see the route. Right-click it (or drag the army there) to march; click it for its details and a March button.[/i]"
 	return text
 
 
@@ -876,7 +887,24 @@ func _show_province(pid: int) -> void:
 		if p.building_level("barracks") > 0:
 			var maa := eco.maa_problem(r, p)
 			actions.append(["Men-at-arms (%d, %dg %d iron)" % [Economy.MAA_SIZE, int(Economy.MAA_GOLD), int(Economy.MAA_IRON)] if maa == "" else "Men-at-arms: " + maa, _act_maa.bind(pid), maa == ""])
+	# With your army selected, marching there is the first thing offered.
+	var army := world.army_by_id(selected_army)
+	if army != null and army.realm == world.player_realm and army.province != pid and not world.spawn_mode:
+		var path := world.find_path(army.province, army.realm, 500, world._is_target.bind(pid))
+		if path.is_empty():
+			actions.push_front(["Lord %s can't get there" % army.general, _act_march.bind(pid), false])
+		else:
+			var days := 0
+			var prev := army.province
+			for step in path:
+				days += world.move_days(prev, step)
+				prev = step
+			actions.push_front(["March Lord %s here (%d days)" % [army.general, days], _act_march.bind(pid)])
 	hud.show_info(p.name, _province_text(pid), actions)
+
+
+func _act_march(pid: int) -> void:
+	_order_selected(pid)
 
 
 func _act_levy(pid: int) -> void:
@@ -924,7 +952,7 @@ func _show_build_menu(pid: int) -> void:
 func _build_text(pid: int) -> String:
 	var p := world.provinces[pid]
 	var eco := world.economy
-	var text := "Slots used: %d / %d" % [eco.used_slots(p), eco.slots(p)]
+	var text := "Gains shown are for this province, per day at today's season.\nSlots used: %d / %d" % [eco.used_slots(p), eco.slots(p)]
 	if p.build_id != "":
 		text += " · building %s, %d days left" % [eco.building_name(p.build_id, p.building_level(p.build_id) + 1), ceili(p.build_left)]
 	for id in eco.order:
@@ -932,13 +960,17 @@ func _build_text(pid: int) -> String:
 		if reason in ["Wrong terrain", "Needs a coast", "No river here"]:
 			continue
 		var next := p.building_level(id) + 1
-		var line := "\n[b]%s[/b]: %s" % [eco.building_name(id, mini(next, int(eco.defs[id]["max"]))), eco.defs[id]["desc"]]
+		var bname := eco.building_name(id, mini(next, int(eco.defs[id]["max"])))
+		var line := "\n[b]%s[/b]" % bname
 		if reason == "Fully built":
-			line += " [i](done)[/i]"
-		elif reason != "":
-			line += " [color=#8a2a1a](%s)[/color]" % reason
+			line += " [i](built)[/i]"
 		else:
-			line += " · %d days" % int(eco.days_of(id, next))
+			var gain := eco.gain_text(p, id)
+			line += ": [color=#2f5f1f]%s[/color]" % (gain if gain != "" else str(eco.defs[id]["desc"]))
+			if reason != "":
+				line += " [color=#8a2a1a](%s)[/color]" % reason
+			else:
+				line += " · %d days" % int(eco.days_of(id, next))
 		text += line
 	return text
 
