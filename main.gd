@@ -125,8 +125,16 @@ func _attach(w: World) -> void:
 	hud.set_map_mode("Realms")
 
 
+var _perf_timer := 0.0
+
+
 func _process(delta: float) -> void:
+	_perf_timer += delta
+	if _perf_timer > 5.0 and OS.has_feature("web") and JavaScriptBridge.eval("window.location.search.includes('perf')", true):
+		_perf_timer = 0.0
+		print("perf: fps %d, day %d, speed %.2f" % [Engine.get_frames_per_second(), world.day, world.speed])
 	world.advance(delta)
+	_flush_map_redraw(delta)
 	var view := cam.view_size() / cam.zoom.x
 	battle_view.view_rect = Rect2(cam.position - view * 0.5, view)
 	_ui_timer += delta
@@ -187,9 +195,22 @@ func _on_battle_started(b: Battle) -> void:
 		sound.play("horn")
 
 
+var _map_dirty := false
+var _redraw_wait := 0.0
+
+
+## Provinces change hands many times a second at 4x: redraw at most 4 times a second.
 func _on_map_changed() -> void:
-	map_view.queue_redraw()
-	labels.queue_redraw()
+	_map_dirty = true
+
+
+func _flush_map_redraw(delta: float) -> void:
+	_redraw_wait -= delta
+	if _map_dirty and _redraw_wait <= 0.0:
+		_map_dirty = false
+		_redraw_wait = 0.25
+		map_view.queue_redraw()
+		labels.queue_redraw()
 
 
 func _on_player_lost() -> void:
@@ -676,7 +697,7 @@ func _show_province(pid: int) -> void:
 	var p := world.provinces[pid]
 	var actions: Array = []
 	if world.spawn_mode:
-		var label := "Found a realm here" if p.owner == -1 else "Rule the %s" % world.realms[p.owner].name
+		var label := "Found a realm here" if p.owner == -1 else "Take the throne of %s" % world.realms[p.owner].name
 		actions.append([label, _choose_spawn.bind(pid)])
 	elif world.player_realm != -1 and p.owner != -1 and p.owner != world.player_realm:
 		var me := world.player_realm

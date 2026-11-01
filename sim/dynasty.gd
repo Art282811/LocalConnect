@@ -88,6 +88,15 @@ func _child(mother: Character, father: Character, realm_id: int, age_years: int)
 	if mother.house == r.house and father.house != r.house:
 		house = mother.house
 	var c := make_person(realm_id, r.culture, house, _rng().randf() < 0.5, age_years)
+	var taken := {}
+	for sib in mother.children + father.children:
+		var other := person(sib)
+		if other != null:
+			taken[other.name] = true
+	for attempt in 6:
+		if not taken.has(c.name):
+			break
+		c.name = world.names.person_name(r.culture, c.female)
 	c.father = father.id
 	c.mother = mother.id
 	for k in mother.claims + father.claims:

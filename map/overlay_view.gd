@@ -187,8 +187,10 @@ func _draw_occupations(s: float) -> void:
 		var a := world.army_by_id(p.siege_army)
 		if a == null:
 			continue
+		if p.owner == -1 and zoom < LabelsView.REGION_ZOOM:
+			continue   # claiming empty land is noise from afar; sieges still show
 		var col := world.realms[a.realm].color()
-		var r := 34.0 * s
+		var r := 34.0 * s * (0.5 if zoom < LabelsView.REGION_ZOOM else 1.0)
 		if p.owner == -1:
 			# Claiming: a dashed ring of stakes.
 			draw_arc(p.center, r, 0, TAU, 32, Color(col, 0.5), 2.0 * s)
@@ -245,7 +247,10 @@ func _draw_route(a: Army, s: float) -> void:
 		draw_circle(prev, 7.0 * s, Color(0.75, 0.1, 0.08))
 
 
-func _banner(a: Army, at: Vector2, s: float) -> void:
+func _banner(a: Army, at: Vector2, s_in: float) -> void:
+	# From afar, banners shrink and only big or player armies show their count.
+	var far := zoom < LabelsView.REGION_ZOOM
+	var s := s_in * (0.65 if far else 1.0)
 	var r := world.realms[a.realm]
 	var col := r.color()
 	var dark := r.border_color()
@@ -263,6 +268,8 @@ func _banner(a: Army, at: Vector2, s: float) -> void:
 	if r.is_player:
 		draw_circle(top + Vector2(0, -3) * s, 3.0 * s, Color(0.95, 0.75, 0.2))
 	# Troop count plaque.
+	if far and not r.is_player and a.troops < 2000 and a.id != selected_army:
+		return
 	var text := _short(a.troops)
 	var fs := int(13.0 * s)
 	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x

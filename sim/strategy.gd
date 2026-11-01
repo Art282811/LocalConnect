@@ -752,8 +752,8 @@ func _diplomacy(r: Realm) -> void:
 		if best != -1:
 			var kind := "alliance" if dip.opinion(best, r.id) >= 20.0 else "defensive"
 			if not dip.has_treaty(kind, r.id, best) and _try(r, kind, best):
-				if world.rng.randf() < 0.5:
-					world.post_news("Fearing %s, %s and %s draw closer." % [world.realms[threat].name, r.name, world.realms[best].name], 1)
+				var near_you := world.player_realm in [threat, best, r.id]
+				world.post_news("Fearing %s, %s and %s draw closer." % [world.realms[threat].name, r.name, world.realms[best].name], 2 if near_you else 0)
 				return
 		# Appease a dangerous neighbour we cannot hope to fight.
 		if (r.personality == "cautious" or win_chance(r.id, threat) < 0.25) and float(r.res["gold"]) > 150.0 \
@@ -780,7 +780,7 @@ func _try(r: Realm, kind: String, other: int) -> bool:
 		return false
 	var result := dip.propose(kind, r.id, other)
 	if result.contains("agrees") and (kind == "alliance" or kind == "defensive"):
-		world.post_news(result.replace("agrees", "and %s agree" % r.name), 2 if world.realms[other].is_player else 1)
+		world.post_news(result.replace("agrees", "and %s agree" % r.name), 2 if world.realms[other].is_player else 0)
 	return true
 
 

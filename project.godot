@@ -31,4 +31,3 @@ pointing/emulate_mouse_from_touch=true
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 environment/defaults/default_clear_color=Color(0.6, 0.68, 0.66, 1)
-anti_aliasing/quality/msaa_2d=1

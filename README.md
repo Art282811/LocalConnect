@@ -20,6 +20,14 @@ Phone/tablet: one finger pans, two fingers pinch-zoom, tap to select.
 
 ## Play it on your phone
 
+**Easiest (any phone, iPhone included): play in the browser** at
+**https://art282811.github.io/LocalConnect/** — once GitHub Pages is switched on
+(repo **Settings → Pages → Deploy from a branch → `claude/new-session-9t693o` →
+`/docs` → Save**). In Safari, **Share → Add to Home Screen** gives it an app icon.
+The web build lives in `docs/`; rebuild it with
+`godot --headless --path . --export-release "Web" build/web/index.html` and copy
+`build/web/*` into `docs/`. Add `?perf` to the URL to log frame rate to the console.
+
 **Android — easiest, no computer needed:**
 1. Install **Godot Engine** (4.3 or newer) from Google Play.
 2. Unzip the project into a folder on the phone.

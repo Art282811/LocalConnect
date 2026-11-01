@@ -518,13 +518,10 @@ func _build_tutorial(root: Control) -> void:
 	tutorial_panel = PanelContainer.new()
 	tutorial_panel.anchor_left = 1.0
 	tutorial_panel.anchor_right = 1.0
-	tutorial_panel.anchor_top = 1.0
-	tutorial_panel.anchor_bottom = 1.0
 	tutorial_panel.offset_left = -400
 	tutorial_panel.offset_right = -10
-	tutorial_panel.offset_top = -10
-	tutorial_panel.offset_bottom = -10
-	tutorial_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	tutorial_panel.offset_top = 70
+	tutorial_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	tutorial_panel.visible = false
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.98, 0.93, 0.72, 0.97)

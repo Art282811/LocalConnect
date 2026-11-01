@@ -4,7 +4,7 @@ extends RefCounted
 ## Ticks daily for every owned province; AI realms manage themselves monthly.
 
 const RESOURCES := ["food", "gold", "wood", "stone", "iron", "faith"]
-const SEASON_FOOD := [0.8, 1.1, 1.7, 0.35]   # spring, summer, autumn (harvest), winter
+const SEASON_FOOD := [1.0, 1.15, 1.35, 0.5]   # spring, summer, autumn (harvest), winter
 const TAX_RATES := [0.6, 1.0, 1.5]
 const TAX_NAMES := ["Low", "Normal", "High"]
 const TAX_HAPPINESS := [10.0, 0.0, -15.0]
