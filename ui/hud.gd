@@ -8,6 +8,7 @@ signal steward_toggled(on: bool)
 signal spectate_pressed
 signal new_world_pressed
 signal rise_again_pressed
+signal realm_pressed
 
 const INK := Color(0.24, 0.16, 0.09)
 const PARCHMENT := Color(0.94, 0.89, 0.76, 0.95)
@@ -15,6 +16,9 @@ const FEED_SIZE := 5
 const FEED_SECONDS := 14.0
 
 var date_label: Label
+var resource_panel: PanelContainer
+var resource_text: RichTextLabel
+var realm_button: Button
 var realm_label: Label
 var speed_buttons: Array[Button] = []
 var steward_button: Button
@@ -121,6 +125,10 @@ func _build_top_bar(root: Control) -> void:
 		b.pressed.connect(func() -> void: speed_chosen.emit(speed))
 		speed_buttons.append(b)
 
+	realm_button = _button("Realm", row)
+	realm_button.pressed.connect(func() -> void: realm_pressed.emit())
+	realm_button.visible = false
+
 	steward_button = _button("Steward", row)
 	steward_button.toggle_mode = true
 	steward_button.tooltip_text = "Let the AI run your realm's wars and armies"
@@ -129,11 +137,26 @@ func _build_top_bar(root: Control) -> void:
 	var log_btn := _button("Chronicle", row)
 	log_btn.pressed.connect(_toggle_log)
 
+	resource_panel = PanelContainer.new()
+	resource_panel.position = Vector2(10, 66)
+	resource_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	resource_panel.visible = false
+	root.add_child(resource_panel)
+	resource_text = RichTextLabel.new()
+	resource_text.bbcode_enabled = true
+	resource_text.fit_content = true
+	resource_text.autowrap_mode = TextServer.AUTOWRAP_OFF
+	resource_text.scroll_active = false
+	resource_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	resource_text.add_theme_font_size_override("normal_font_size", 16)
+	resource_text.add_theme_font_size_override("bold_font_size", 16)
+	resource_panel.add_child(resource_text)
+
 
 func _build_feed(root: Control) -> void:
 	feed = VBoxContainer.new()
 	feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	feed.position = Vector2(10, 70)
+	feed.position = Vector2(10, 116)
 	feed.custom_minimum_size = Vector2(440, 0)
 	feed.add_theme_constant_override("separation", 4)
 	root.add_child(feed)
@@ -272,6 +295,15 @@ func set_speed(speed: int) -> void:
 	var idx := [0, 1, 2, 4].find(speed)
 	if idx >= 0:
 		speed_buttons[idx].set_pressed_no_signal(true)
+
+
+## Shows the treasury row; pass "" to hide it (no realm of your own).
+func set_resources(bbcode: String) -> void:
+	resource_panel.visible = bbcode != ""
+	realm_button.visible = bbcode != ""
+	if bbcode != "":
+		resource_text.text = bbcode
+		resource_panel.reset_size()
 
 
 func set_steward(on: bool) -> void:

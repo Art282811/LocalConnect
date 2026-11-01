@@ -30,6 +30,14 @@ var enemies: Dictionary = {}   # realm id -> true while at war
 var truces: Dictionary = {}    # realm id -> day the truce ends
 var peace_refused_until: int = 0
 
+# Layer 2: the treasury.
+var res: Dictionary = {"food": 250.0, "gold": 120.0, "wood": 60.0, "stone": 40.0, "iron": 10.0, "faith": 0.0}
+var delta: Dictionary = {}     # yesterday's change per resource, for the HUD
+var tax: int = 1               # 0 low, 1 normal, 2 high
+var festival_until: int = -1
+var starving := false
+var broke := false
+
 
 static func rank_for_size(n: int) -> int:
 	if n >= 16:

@@ -12,4 +12,5 @@ var progress: float = 0.0      # 0..1 along the edge to path[0]
 var task: String = "idle"      # idle, claim, attack, defend, retreat, order
 var manual := false            # player order in progress; AI leaves it alone
 var skill: int = 1
+var quality: float = 1.0       # 1.0 = levies; men-at-arms fight harder
 var dead := false

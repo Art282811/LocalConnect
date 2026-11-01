@@ -50,6 +50,7 @@ var map_size := Vector2.ZERO
 var hex_radius := 50.0
 
 var names: NameGen
+var economy: Economy
 var _accum := 0.0
 var _next_army_id := 0
 var _targeted := {}               # province id -> army id heading there
@@ -59,6 +60,7 @@ func setup(seed_value: int) -> void:
 	rng.seed = seed_value
 	var world_data := _load_json("res://data/world.json")
 	names = NameGen.new(_load_json("res://data/names.json"), rng)
+	economy = Economy.new(self, _load_json("res://data/buildings.json"))
 
 	var builder := MapBuilder.new(world_data)
 	builder.build(rng)
@@ -75,6 +77,7 @@ func setup(seed_value: int) -> void:
 	for p: Province in provinces:
 		p.name = names.place_name(p.culture)
 		_roll_settlement(p)
+		economy.init_province(p)
 
 	for entry in realm_data.get("realms", []):
 		_place_start_realm(entry, builder)
@@ -97,19 +100,16 @@ func _roll_settlement(p: Province) -> void:
 		p.settlement = "castle"
 	elif roll < 0.1:
 		p.settlement = "monastery"
-	elif p.terrain == "plains" and roll < 0.55:
-		p.settlement = "town"
-	elif roll < 0.25:
+	elif roll < 0.22:
 		p.settlement = "castle"
 	else:
-		p.settlement = "village"
-	p.level = 1 if p.settlement == "village" else rng.randi_range(1, 2)
-	_refresh_fort(p)
+		p.settlement = "village"  # becomes a town once it has the people
 
 
-func _refresh_fort(p: Province) -> void:
-	var base := {"castle": 2, "town": 1, "port": 1, "monastery": 0, "village": 0}
-	p.fort = int(base.get(p.settlement, 0)) + (1 if _is_capital(p.id) else 0)
+## Siege strength: walls you build, plus a castle or a capital's defences.
+func refresh_fort(p: Province) -> void:
+	p.fort = p.building_level("walls") + (1 if p.settlement == "castle" else 0) \
+		+ (1 if p.level >= 3 else 0) + (1 if _is_capital(p.id) else 0)
 
 
 func _is_capital(pid: int) -> bool:
@@ -160,10 +160,12 @@ func _create_realm(realm_name: String, culture: String, capital: int, personalit
 	r.capital = capital
 	_set_owner(provinces[capital], r.id)
 	var cap := provinces[capital]
-	if cap.settlement == "village" or cap.settlement == "monastery":
+	if cap.settlement == "monastery":
 		cap.settlement = "castle"
-	cap.level = maxi(cap.level, 2)
-	_refresh_fort(cap)
+	if cap.pop < Economy.TOWN_POP + 400.0:
+		cap.pop = Economy.TOWN_POP + 400.0
+		economy.init_level(cap)
+	refresh_fort(cap)
 	return r
 
 
@@ -218,6 +220,7 @@ func tick_day() -> void:
 	_move_armies()
 	_resolve_battles()
 	_progress_occupations()
+	economy.tick_day()
 	if season() == 3:
 		_winter_attrition()
 	for r: Realm in realms:
@@ -255,6 +258,8 @@ func can_enter(realm_id: int, pid: int) -> bool:
 
 func move_days(from: int, to: int) -> int:
 	var days: int = TERRAIN[provinces[to].terrain]["move"]
+	if provinces[to].building_level("road") > 0:
+		days = maxi(int(days * 0.7), 3)
 	if provinces[from].straits.has(to):
 		days *= 2
 	return days
@@ -283,11 +288,10 @@ func realm_troops(r: Realm) -> int:
 
 
 func realm_strength(r: Realm) -> float:
-	return realm_troops(r) + r.manpower * 0.5 + r.provinces.size() * 100.0
-
-
-func province_dev(p: Province) -> int:
-	return int(TERRAIN[p.terrain]["dev"]) + p.level
+	var s := 0.0
+	for a: Army in armies_of(r.id):
+		s += a.troops * a.quality
+	return s + r.manpower * 0.4 + maxf(float(r.res["gold"]), 0.0) * 2.0 + r.provinces.size() * 100.0
 
 
 func neighbor_realms(r: Realm) -> Array[int]:
@@ -438,8 +442,8 @@ func _resolve_battles() -> void:
 
 func _battle(a: Army, b: Army, p: Province) -> void:
 	var defense: float = TERRAIN[p.terrain]["defense"]
-	var sa := a.troops * rng.randf_range(0.75, 1.25) * (1.0 + a.skill * 0.08)
-	var sb := b.troops * rng.randf_range(0.75, 1.25) * (1.0 + b.skill * 0.08)
+	var sa := a.troops * a.quality * rng.randf_range(0.75, 1.25) * (1.0 + a.skill * 0.08)
+	var sb := b.troops * b.quality * rng.randf_range(0.75, 1.25) * (1.0 + b.skill * 0.08)
 	if p.owner == b.realm:
 		sb *= defense
 	elif p.owner == a.realm:
@@ -535,14 +539,43 @@ func _take_province(p: Province, new_owner: int) -> void:
 				w["taken"][new_owner] = int(w["taken"].get(new_owner, 0)) + 1
 		var importance := 2 if (nr.is_player or orl.is_player) else 0
 		post_news("%s takes %s from %s." % [nr.name, p.name, orl.name], importance)
+		# Conquest scars: plunder, broken walls, a sullen population.
+		var loot := maxf(float(orl.res["gold"]), 0.0) * 0.15 + p.pop * 0.01
+		orl.res["gold"] = float(orl.res["gold"]) - minf(loot, maxf(float(orl.res["gold"]), 0.0))
+		nr.res["gold"] = float(nr.res["gold"]) + loot
+		p.occupied_until = day + DAYS_PER_YEAR
+		p.pop *= 0.9
+		p.build_id = ""
+		if p.building_level("walls") > 0:
+			p.buildings["walls"] = p.building_level("walls") - 1
 		if orl.provinces.is_empty():
 			_realm_falls(orl, nr)
 		else:
 			if orl.capital == p.id:
 				_move_capital(orl)
 			_update_rank(orl)
-	_refresh_fort(p)
+	refresh_fort(p)
 	_update_rank(nr)
+	map_changed.emit()
+
+
+## A miserable province throws off its lord and fights for itself.
+func peasant_revolt(p: Province) -> void:
+	if p.owner == -1:
+		return
+	var old := realms[p.owner]
+	if old.provinces.size() <= 1 or old.capital == p.id:
+		return
+	var old_name := old.full_name()
+	var rebel := _create_realm(p.name, p.culture, p.id, "cruel")
+	rebel.rank = Realm.rank_for_size(rebel.provinces.size())
+	rebel.manpower = 100.0
+	rebel.res = {"food": 120.0, "gold": 30.0, "wood": 10.0, "stone": 0.0, "iron": 0.0, "faith": 0.0}
+	spawn_army(rebel.id, p.id, int(clampf(p.pop * 0.12, 200.0, 1200.0)))
+	p.happiness = 50.0
+	_update_rank(old)
+	declare_war(rebel.id, old.id, true)
+	post_news("The peasants of %s rise against the %s!" % [p.name, old_name], 2 if old.is_player else 1)
 	map_changed.emit()
 
 
@@ -552,7 +585,7 @@ func _move_capital(r: Realm) -> void:
 		if provinces[pid].level > provinces[best].level:
 			best = pid
 	r.capital = best
-	_refresh_fort(provinces[best])
+	refresh_fort(provinces[best])
 	post_news("The %s moves its court to %s." % [r.full_name(), provinces[best].name], 2 if r.is_player else 0)
 
 
@@ -596,11 +629,11 @@ func _monthly() -> void:
 	for r: Realm in realms:
 		if not r.alive:
 			continue
-		var dev := 0
-		for pid: int in r.provinces:
-			dev += province_dev(provinces[pid])
-		r.manpower = minf(r.manpower + dev * 28.0, dev * 350.0)
-		_recruit(r)
+		r.manpower = minf(r.manpower + economy.monthly_manpower(r), economy.manpower_cap(r))
+		var ai_runs := not r.is_player or auto_rule
+		if ai_runs:
+			economy.ai_manage(r)
+		_recruit(r, ai_runs)
 	_check_peace()
 	var alive_armies: Array[Army] = []
 	for a: Army in armies:
@@ -609,19 +642,30 @@ func _monthly() -> void:
 	armies = alive_armies
 
 
-func _recruit(r: Realm) -> void:
+## Tops up armies standing at home (all realms) and, for AI-run realms, raises
+## new ones. Every soldier costs manpower and gold, the same as a levy.
+func _recruit(r: Realm, raise_new: bool) -> void:
+	var gold_per_man := Economy.LEVY_GOLD / Economy.LEVY_SIZE
 	var mine := armies_of(r.id)
 	var cap := 400 + r.provinces.size() * 120
 	for a: Army in mine:
-		if provinces[a.province].owner == r.id and a.troops < cap and r.manpower > 0.0:
-			var add := int(minf(cap - a.troops, r.manpower))
-			a.troops += add
-			r.manpower -= add
+		if provinces[a.province].owner != r.id or a.troops >= cap or r.manpower <= 0.0:
+			continue
+		var affordable := float(r.res["gold"]) / gold_per_man
+		var add := int(minf(minf(cap - a.troops, r.manpower), affordable))
+		if add <= 0:
+			continue
+		a.quality = (a.troops * a.quality + add * 1.0) / float(a.troops + add)
+		a.troops += add
+		r.manpower -= add
+		r.res["gold"] = float(r.res["gold"]) - add * gold_per_man
 	var max_armies := 1 + r.provinces.size() / 5
-	if mine.size() < max_armies and r.manpower >= 300.0 and r.capital != -1:
-		var t := int(minf(r.manpower, cap))
-		spawn_army(r.id, r.capital, t)
-		r.manpower -= t
+	if raise_new and mine.size() < max_armies and r.manpower >= 300.0 and r.capital != -1:
+		var t := int(minf(minf(r.manpower, cap), float(r.res["gold"]) / gold_per_man))
+		if t >= 300:
+			spawn_army(r.id, r.capital, t)
+			r.manpower -= t
+			r.res["gold"] = float(r.res["gold"]) - t * gold_per_man
 
 
 func _seasonal() -> void:

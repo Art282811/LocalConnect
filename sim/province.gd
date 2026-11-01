@@ -18,8 +18,20 @@ var coastal := false
 
 var owner: int = -1            # realm id, -1 = unclaimed
 var settlement: String = "village"  # village, town, castle, port, monastery
-var level: int = 1             # 1 village .. 4 capital city
+var level: int = 1             # 1 village, 2 town, 3 city (capital adds one)
 var fort: int = 0              # defensive level used by sieges
+
+# Layer 2: people and buildings.
+var pop: float = 1500.0
+var happiness: float = 55.0
+var buildings: Dictionary = {} # building id -> level
+var build_id: String = ""      # under construction, "" = nothing
+var build_left: float = 0.0    # days of work left
+var occupied_until: int = -1   # recently conquered: unhappy until this day
+
+
+func building_level(id: String) -> int:
+	return int(buildings.get(id, 0))
 
 # Occupation in progress (claiming unclaimed land or besieging enemy land).
 var siege_army: int = -1

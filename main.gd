@@ -11,7 +11,7 @@ var hud: Hud
 
 var selected_province := -1
 var selected_army := -1
-var _info_kind := ""   # "", "province", "army"
+var _info_kind := ""   # "", "province", "army", "build", "realm"
 var _ui_timer := 0.0
 
 
@@ -36,6 +36,7 @@ func _ready() -> void:
 	hud.spectate_pressed.connect(_on_spectate)
 	hud.new_world_pressed.connect(func() -> void: _new_world(randi()))
 	hud.rise_again_pressed.connect(_on_rise_again)
+	hud.realm_pressed.connect(_show_realm)
 
 	randomize()
 	_new_world(randi())
@@ -141,6 +142,7 @@ func _refresh_hud() -> void:
 		if not r.enemies.is_empty():
 			text += " · at war with " + _realm_list(r.enemies.keys())
 		hud.set_realm_text(text)
+		hud.set_resources(_resource_bar(r))
 	elif world.spawn_mode:
 		hud.set_realm_text("Choose where your dynasty begins")
 	else:
@@ -149,9 +151,19 @@ func _refresh_hud() -> void:
 			if r.alive:
 				alive += 1
 		hud.set_realm_text("Watching · %d realms · %d unclaimed provinces" % [alive, world.unclaimed_count()])
+	if world.player_realm == -1:
+		hud.set_resources("")
 	hud.refresh_log(world.news_log)
 	if _info_kind == "province" and selected_province != -1:
 		hud.update_info_body(_province_text(selected_province))
+	elif _info_kind == "build" and selected_province != -1:
+		hud.update_info_body(_build_text(selected_province))
+	elif _info_kind == "realm":
+		if world.player_realm == -1:
+			_info_kind = ""
+			hud.hide_info()
+		else:
+			hud.update_info_body(_realm_text(world.realms[world.player_realm]))
 	elif _info_kind == "army":
 		var a := world.army_by_id(selected_army)
 		if a == null:
@@ -281,7 +293,158 @@ func _show_province(pid: int) -> void:
 			var ok := truce_end <= world.day
 			var label := "Declare war" if ok else "Truce until Y%d" % (truce_end / World.DAYS_PER_YEAR + 1)
 			actions.append([label, _act_declare_war.bind(them, pid), ok])
+	elif world.player_realm != -1 and p.owner == world.player_realm:
+		var r := world.realms[p.owner]
+		var eco := world.economy
+		actions.append(["Build…", _show_build_menu.bind(pid), p.build_id == ""])
+		var levy := eco.levy_problem(r, p)
+		actions.append(["Raise levy (%d men, %dg)" % [Economy.LEVY_SIZE, int(Economy.LEVY_GOLD)] if levy == "" else "Levy: " + levy, _act_levy.bind(pid), levy == ""])
+		if p.building_level("barracks") > 0:
+			var maa := eco.maa_problem(r, p)
+			actions.append(["Men-at-arms (%d, %dg %d iron)" % [Economy.MAA_SIZE, int(Economy.MAA_GOLD), int(Economy.MAA_IRON)] if maa == "" else "Men-at-arms: " + maa, _act_maa.bind(pid), maa == ""])
 	hud.show_info(p.name, _province_text(pid), actions)
+
+
+func _act_levy(pid: int) -> void:
+	if world.economy.raise_levy(world.realms[world.player_realm], world.provinces[pid]):
+		hud.add_news("Levies gather at %s." % world.provinces[pid].name)
+	_show_province(pid)
+
+
+func _act_maa(pid: int) -> void:
+	if world.economy.hire_men_at_arms(world.realms[world.player_realm], world.provinces[pid]):
+		hud.add_news("Men-at-arms take service at %s." % world.provinces[pid].name)
+	_show_province(pid)
+
+
+# --- Building ------------------------------------------------------------------
+
+const RES_SHORT := {"food": "f", "gold": "g", "wood": "w", "stone": "s", "iron": " iron", "faith": " faith"}
+
+
+func _short_cost(cost: Dictionary) -> String:
+	var bits := PackedStringArray()
+	for k in Economy.RESOURCES:
+		if cost.has(k):
+			bits.append("%d%s" % [int(cost[k]), RES_SHORT[k]])
+	return " ".join(bits)
+
+
+func _show_build_menu(pid: int) -> void:
+	_info_kind = "build"
+	selected_province = pid
+	var p := world.provinces[pid]
+	var eco := world.economy
+	var actions: Array = []
+	for id in eco.order:
+		var reason := eco.why_not(p, id)
+		if reason in ["Fully built", "Wrong terrain", "Needs a coast"]:
+			continue
+		var next := p.building_level(id) + 1
+		var label := "%s · %s" % [eco.building_name(id, next), _short_cost(eco.cost_of(id, next))]
+		actions.append([label, _act_build.bind(pid, id), reason == ""])
+	actions.append(["Back", _show_province.bind(pid)])
+	hud.show_info("Build in %s" % p.name, _build_text(pid), actions)
+
+
+func _build_text(pid: int) -> String:
+	var p := world.provinces[pid]
+	var eco := world.economy
+	var text := "Slots used: %d / %d" % [eco.used_slots(p), eco.slots(p)]
+	if p.build_id != "":
+		text += " · building %s, %d days left" % [eco.building_name(p.build_id, p.building_level(p.build_id) + 1), ceili(p.build_left)]
+	for id in eco.order:
+		var reason := eco.why_not(p, id)
+		if reason in ["Wrong terrain", "Needs a coast"]:
+			continue
+		var next := p.building_level(id) + 1
+		var line := "\n[b]%s[/b]: %s" % [eco.building_name(id, mini(next, int(eco.defs[id]["max"]))), eco.defs[id]["desc"]]
+		if reason == "Fully built":
+			line += " [i](done)[/i]"
+		elif reason != "":
+			line += " [color=#8a2a1a](%s)[/color]" % reason
+		else:
+			line += " · %d days" % int(eco.days_of(id, next))
+		text += line
+	return text
+
+
+func _act_build(pid: int, id: String) -> void:
+	var p := world.provinces[pid]
+	if world.economy.start_building(p, id):
+		hud.add_news("Work begins on %s in %s." % [world.economy.building_name(id, p.building_level(id) + 1), p.name])
+	_show_province(pid)
+
+
+# --- Realm panel -----------------------------------------------------------------
+
+func _resource_bar(r: Realm) -> String:
+	var bits := PackedStringArray()
+	for k in Economy.RESOURCES:
+		var amount := float(r.res.get(k, 0.0))
+		var d := float(r.delta.get(k, 0.0))
+		var col := "#3c6a2a" if d >= 0.0 else "#9a2a1a"
+		var warn := k == "food" and r.starving or k == "gold" and r.broke
+		var name_col := "#9a2a1a" if warn else "#3d2a17"
+		bits.append("[color=%s][b]%s[/b][/color] %d [color=%s]%+.1f[/color]" % [name_col, k.capitalize(), int(amount), col, d])
+	bits.append("[b]Men[/b] %d" % int(r.manpower))
+	return "   ".join(bits)
+
+
+func _show_realm() -> void:
+	if world.player_realm == -1:
+		return
+	_clear_selection()
+	_info_kind = "realm"
+	var r := world.realms[world.player_realm]
+	var actions: Array = []
+	for i in Economy.TAX_NAMES.size():
+		actions.append(["%s taxes" % Economy.TAX_NAMES[i], _act_tax.bind(i), r.tax != i])
+	var fest_ok := float(r.res["gold"]) >= Economy.FESTIVAL_COST and r.festival_until <= world.day
+	actions.append(["Hold festival (%dg)" % int(Economy.FESTIVAL_COST), _act_festival, fest_ok])
+	if r.capital != -1:
+		actions.append(["Go to capital", _act_go_capital])
+	hud.show_info(r.full_name(), _realm_text(r), actions)
+
+
+func _realm_text(r: Realm) -> String:
+	var eco := world.economy
+	var pop := 0.0
+	var mood := 0.0
+	var building := 0
+	for pid: int in r.provinces:
+		var p := world.provinces[pid]
+		pop += p.pop
+		mood += p.happiness
+		if p.build_id != "":
+			building += 1
+	var n := maxi(r.provinces.size(), 1)
+	var text := "%d provinces · %d people · average happiness %d\n" % [r.provinces.size(), int(pop), int(mood / n)]
+	text += "Taxes: [b]%s[/b] · troops %d · manpower %d / %d\n" % [Economy.TAX_NAMES[r.tax], world.realm_troops(r), int(r.manpower), int(eco.manpower_cap(r))]
+	text += "Constructions under way: %d\n" % building
+	if r.festival_until > world.day:
+		text += "Festival: %d days left\n" % (r.festival_until - world.day)
+	if r.starving:
+		text += "[color=#9a2a1a]Famine: build farms, a granary, or disband troops.[/color]\n"
+	if r.broke:
+		text += "[color=#9a2a1a]Treasury empty: soldiers are deserting.[/color]\n"
+	text += "\n" + _resource_bar(r).replace("   ", "\n")
+	return text
+
+
+func _act_tax(level: int) -> void:
+	world.realms[world.player_realm].tax = level
+	_show_realm()
+
+
+func _act_festival() -> void:
+	world.economy.hold_festival(world.realms[world.player_realm])
+	_show_realm()
+
+
+func _act_go_capital() -> void:
+	var r := world.realms[world.player_realm]
+	cam.focus(world.provinces[r.capital].center, 1.2)
 
 
 func _act_offer_peace(them: int, pid: int) -> void:
@@ -308,9 +471,38 @@ func _province_text(pid: int) -> String:
 			text += " · capital"
 		if not r.enemies.is_empty():
 			text += "\nAt war with " + _realm_list(r.enemies.keys())
+		text += "\nPopulation %d · happiness %d" % [int(p.pop), int(p.happiness)]
+		if p.happiness < 30.0:
+			text += " [color=#9a2a1a](rioting)[/color]"
+		if r.is_player:
+			text += _own_province_text(p)
 	if p.siege_army != -1:
 		var verb := "Being claimed" if p.owner == -1 else "Under siege"
 		text += "\n[color=#8a2a1a]%s: %d%%[/color]" % [verb, int(p.siege_progress * 100.0)]
+	return text
+
+
+func _own_province_text(p: Province) -> String:
+	var eco := world.economy
+	var text := ""
+	var mood := PackedStringArray()
+	for part in eco.happiness_parts(p):
+		mood.append("%s %+d" % [part[0], int(part[1])])
+	text += "\n[font_size=14]Mood: %s[/font_size]" % ", ".join(mood)
+	var y := eco.yields(p)
+	var made := PackedStringArray()
+	for k in Economy.RESOURCES:
+		if float(y[k]) >= 0.05:
+			made.append("%s +%.1f" % [k, float(y[k])])
+	text += "\nMakes per day: %s · eats %.1f food" % [", ".join(made), p.pop * Economy.FOOD_PER_PERSON]
+	var built := PackedStringArray()
+	for id in eco.order:
+		var lvl := p.building_level(id)
+		if lvl > 0:
+			built.append(eco.building_name(id, lvl))
+	text += "\nBuildings (%d/%d slots): %s" % [eco.used_slots(p), eco.slots(p), ", ".join(built) if not built.is_empty() else "none"]
+	if p.build_id != "":
+		text += "\nBuilding %s: %d days left" % [eco.building_name(p.build_id, p.building_level(p.build_id) + 1), ceili(p.build_left)]
 	return text
 
 
