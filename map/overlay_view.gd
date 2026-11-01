@@ -40,7 +40,8 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	if world == null:
 		return
-	var s := 1.0 / clampf(zoom, 0.3, 2.0)
+	# Markers keep a steady size on screen at every zoom.
+	var s := 1.0 / clampf(zoom, 0.3, 40.0)
 	_t += get_process_delta_time()
 	_draw_hover(s)
 	if zoom >= 0.45:
@@ -96,11 +97,7 @@ func _draw_trade(s: float) -> void:
 				draw_circle(at + Vector2(3, 3) * s, 2.0 * s, INK)
 		if zoom >= 0.9:
 			var mid := pts[pts.size() / 2]
-			var label := str(route["goods"])
-			var fs := int(11.0 * s)
-			var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-			draw_string_outline(font, mid + Vector2(-w * 0.5, -8 * s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, int(3 * s), PAPER)
-			draw_string(font, mid + Vector2(-w * 0.5, -8 * s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.5, 0.35, 0.05))
+			_text(mid + Vector2(0, -8 * s), str(route["goods"]), 11, Color(0.5, 0.35, 0.05), s, PAPER, true)
 
 
 ## Great trade routes: owned roads with camel caravans; red marks show
@@ -136,14 +133,10 @@ func _draw_grand_routes(s: float) -> void:
 				var p := world.provinces[pid]
 				if world.trade.stretch_risk(route, pid) >= 0.05:
 					draw_circle(p.center + Vector2(0, 26) * s, 7.0 * s, Color(0.75, 0.1, 0.08, 0.85))
-					draw_string(font, p.center + Vector2(-3, 31) * s, "!", HORIZONTAL_ALIGNMENT_LEFT, -1, int(14 * s), PAPER)
+					_text(p.center + Vector2(0, 31) * s, "!", 14, PAPER, s, Color(0, 0, 0, 0), true)
 		if zoom >= 0.8:
 			var mid := pts[pts.size() / 2]
-			var label := str(route["name"])
-			var fs := int(12.0 * s)
-			var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-			draw_string_outline(font, mid + Vector2(-lw * 0.5, 18 * s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, int(3 * s), PAPER)
-			draw_string(font, mid + Vector2(-lw * 0.5, 18 * s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.45, 0.28, 0.05))
+			_text(mid + Vector2(0, 18 * s), str(route["name"]), 12, Color(0.45, 0.28, 0.05), s, PAPER, true)
 
 
 func _camel(at: Vector2, s: float) -> void:
@@ -308,13 +301,12 @@ func _draw_preview(s: float) -> void:
 	else:
 		label = "%d days" % preview_days
 		_flowing_path(preview_path, Color(col, 0.85), s)
-	var fs := int(15.0 * s)
-	var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x * s
 	var at := preview_end + Vector2(14, -14) * s
-	var box := Rect2(at - Vector2(5 * s, fs), Vector2(w + 10 * s, fs + 8 * s))
+	var box := Rect2(at - Vector2(5, 15) * s, Vector2(w + 10 * s, 23 * s))
 	draw_rect(box, Color(PAPER, 0.95))
 	draw_rect(box, col, false, 1.5 * s)
-	draw_string(font, at + Vector2(0, -1 * s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col.darkened(0.3))
+	_text(at + Vector2(0, -1 * s), label, 15, col.darkened(0.3), s)
 
 
 func _banner(a: Army, at: Vector2, s_in: float) -> void:
@@ -348,12 +340,24 @@ func _banner(a: Army, at: Vector2, s_in: float) -> void:
 	if not relevant:
 		return
 	var text := _short(a.troops)
-	var fs := int(13.0 * s)
-	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	var plaque := Rect2(at + Vector2(-w * 0.5 - 4 * s, -1 * s), Vector2(w + 8 * s, fs + 4 * s))
+	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x * s
+	var plaque := Rect2(at + Vector2(-w * 0.5 - 4 * s, -1 * s), Vector2(w + 8 * s, 17 * s))
 	draw_rect(plaque, PAPER)
 	draw_rect(plaque, dark, false, 1.2 * s)
-	draw_string(font, plaque.position + Vector2(4 * s, fs), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK)
+	_text(plaque.position + Vector2(4, 13) * s, text, 13, INK, s)
+
+
+## Text that stays crisp and the same size on screen: drawn at its real pixel
+## size and scaled into the world, instead of at a tiny (rounded) font size.
+func _text(at: Vector2, text: String, px: int, col: Color, s: float, outline := Color(0, 0, 0, 0), centered := false) -> void:
+	var origin := at
+	if centered:
+		origin.x -= font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x * s * 0.5
+	draw_set_transform(origin, 0.0, Vector2(s, s))
+	if outline.a > 0.0:
+		draw_string_outline(font, Vector2.ZERO, text, HORIZONTAL_ALIGNMENT_LEFT, -1, px, 3, outline)
+	draw_string(font, Vector2.ZERO, text, HORIZONTAL_ALIGNMENT_LEFT, -1, px, col)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 static func _short(n: int) -> String:

@@ -7,6 +7,7 @@ var map_view: MapView
 var labels: LabelsView
 var overlay: OverlayView
 var battle_view: BattleView
+var town_view: TownView
 var cam: CameraRig
 var hud: Hud
 var sound: Sound
@@ -41,12 +42,17 @@ const TUTORIAL := [
 
 
 func _ready() -> void:
+	if OS.has_feature("web") and JavaScriptBridge.eval("window.location.search.includes('gallery')", true):
+		add_child(load("res://tests/gallery.gd").new())   # art check page
+		return
 	Settings.load_settings()
 	get_tree().root.content_scale_factor = Settings.ui_scale()
 	sound = Sound.new()
 	add_child(sound)
 	map_view = MapView.new()
 	add_child(map_view)
+	town_view = TownView.new()
+	add_child(town_view)
 	labels = LabelsView.new()
 	add_child(labels)
 	battle_view = BattleView.new()
@@ -116,6 +122,7 @@ func _attach(w: World) -> void:
 	world.battle_ended.connect(_on_battle_ended)
 	world.dynasty_lost.connect(_on_dynasty_lost)
 	map_view.world = world
+	town_view.world = world
 	battle_view.world = world
 	labels.world = world
 	overlay.world = world
@@ -135,6 +142,8 @@ var _perf_timer := 0.0
 
 
 func _process(delta: float) -> void:
+	if world == null:
+		return
 	_perf_timer += delta
 	if _perf_timer > 5.0 and OS.has_feature("web") and JavaScriptBridge.eval("window.location.search.includes('perf')", true):
 		_perf_timer = 0.0
@@ -143,6 +152,7 @@ func _process(delta: float) -> void:
 	_flush_map_redraw(delta)
 	var view := cam.view_size() / cam.zoom.x
 	battle_view.view_rect = Rect2(cam.position - view * 0.5, view)
+	town_view.view_rect = battle_view.view_rect
 	_ui_timer += delta
 	if _ui_timer >= 0.25:
 		_ui_timer = 0.0
@@ -236,6 +246,7 @@ func _on_zoom(z: float) -> void:
 	labels.set_zoom(z)
 	overlay.zoom = z
 	battle_view.zoom = z
+	town_view.zoom = z
 
 
 func _on_speed(s: float) -> void:

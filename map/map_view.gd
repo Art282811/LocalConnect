@@ -58,7 +58,7 @@ func _draw() -> void:
 		for piece: PackedVector2Array in p.polygons:
 			draw_colored_polygon(piece, fill)
 
-	if zoom > 0.42:
+	if zoom > 0.42 and zoom < TownView.SHOW_ZOOM:
 		_draw_terrain_glyphs()
 
 	for river in world.rivers:
@@ -110,7 +110,25 @@ func _draw() -> void:
 	_draw_frame(size)
 
 
+## Up close the land turns from map tint to real ground: grass, woods, rock, sand.
+const GROUND := {
+	"plains": Color(0.64, 0.74, 0.46), "forest": Color(0.50, 0.64, 0.40), "hills": Color(0.66, 0.69, 0.48),
+	"mountains": Color(0.70, 0.68, 0.62), "marsh": Color(0.56, 0.66, 0.52), "desert": Color(0.88, 0.80, 0.58),
+}
+
+
 func _fill_for(p: Province) -> Color:
+	var map_col := _map_fill(p)
+	var close := clampf((zoom - 1.4) / (TownView.SHOW_ZOOM + 0.4 - 1.4), 0.0, 1.0)
+	if close <= 0.0:
+		return map_col
+	var ground: Color = GROUND.get(p.terrain, LAND)
+	if p.owner != -1 and mode == "realms":
+		ground = ground.lerp(world.realms[p.owner].color(), 0.12)   # a hint of whose land it is
+	return map_col.lerp(ground, close)
+
+
+func _map_fill(p: Province) -> Color:
 	var base: Color = TERRAIN_TINT.get(p.terrain, LAND)
 	match mode:
 		"faiths":

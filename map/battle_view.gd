@@ -271,9 +271,14 @@ func _draw_counts(b: Battle) -> void:
 
 # --- Close: soldiers ----------------------------------------------------------------------------------
 
+const FIGURE_K := 0.11   # world pixels per figure unit (a soldier is 20 units tall)
+
+
 func _draw_figures(b: Battle) -> void:
+	var view := view_rect.grow(4.0)
+	var figures: Array = []   # [y, kind, at, flip, opts]
 	for r: Regiment in b.regiments:
-		if not r.alive():
+		if not r.alive() or not view.has_point(r.pos):
 			continue
 		var col := _side_color(b, r.side)
 		var culture := world.realms[b.side_realm[r.side]].culture if b.side_realm[r.side] != -1 else "latin"
@@ -287,19 +292,41 @@ func _draw_figures(b: Battle) -> void:
 		var sel := b.id == selected_battle and r.id == selected_regiment
 		if sel:
 			draw_arc(r.pos, r.radius() + 0.8, 0, TAU, 24, Color(1.0, 0.85, 0.2, 0.9), _lw(0.4))
+		var flip := 1.0 if f.x >= 0.0 else -1.0
+		if r.routed:
+			flip = -flip
+		var helm := "nasal"
+		var weapon := "spear"
+		match r.kind:
+			"sword":
+				helm = "great"
+				weapon = "sword"
+			"archer":
+				helm = "kettle"
+				weapon = "bow"
+		var coat := col.lightened(0.55)
+		var emblem := col.darkened(0.35) if not cross else Color(0.78, 0.12, 0.1)
 		for i in n:
 			var cx := (float(i % cols) + 0.5) / cols - 0.5
 			var cy := (float(i / cols) + 0.5) / rows - 0.5
-			var jitter := Vector2(sin(i * 12.9898 + r.id) , cos(i * 78.233 + r.id)) * 0.35
+			var jitter := Vector2(sin(i * 12.9898 + r.id), cos(i * 78.233 + r.id)) * 0.35
 			if r.routed:
 				jitter *= 4.0
 			var at := r.pos + p * (cx * d.x) - f * (cy * d.y) + jitter
-			var phase := _t * 9.0 + i * 1.7
-			var flip := 1.0 if f.x >= 0.0 else -1.0
-			if r.is_cavalry():
-				_rider(at, col, cross, r, phase, flip)
-			else:
-				_soldier(at, col, cross, r, phase, flip)
+			var opts := {"surcoat": coat, "cross": true, "emblem": emblem, "helm": helm, "weapon": weapon,
+				"phase": _t * 9.0 + i * 1.7, "moving": r.moving, "fighting": r.engaged and not r.routed,
+				"routed": r.routed, "pennant": col, "horse": Color(0.45, 0.30, 0.20) if (i + r.id) % 3 != 0 else Color(0.28, 0.22, 0.18)}
+			if not cross:
+				opts["cross"] = false
+			figures.append([at.y, "rider" if r.is_cavalry() else "foot", at, flip, opts])
+	# Back to front, so nearer soldiers overlap the ones behind them.
+	figures.sort_custom(func(x: Array, y: Array) -> bool: return float(x[0]) < float(y[0]))
+	for fig in figures:
+		var k := FIGURE_K * (0.85 if fig[1] == "rider" else 1.0)
+		if fig[1] == "rider":
+			Figures.rider(self, fig[2], k, fig[3], fig[4])
+		else:
+			Figures.footman(self, fig[2], k, fig[3], fig[4])
 
 
 func _soldier(at: Vector2, col: Color, cross: bool, r: Regiment, phase: float, flip: float) -> void:
@@ -371,13 +398,11 @@ func _rider(at: Vector2, col: Color, cross: bool, r: Regiment, phase: float, fli
 
 
 func _draw_fallen(b: Battle) -> void:
-	var c := Color(0.35, 0.3, 0.27, 0.7)
+	var view := view_rect.grow(2.0)
 	for i in b.fallen.size():
 		var at := b.fallen[i]
-		var ang := float(i) * 2.1
-		var dir := Vector2(cos(ang), sin(ang)) * 0.6
-		draw_line(at - dir, at + dir, c, _lw(0.18))
-		draw_circle(at + dir, 0.17, c)
+		if view.has_point(at):
+			Figures.fallen(self, at, FIGURE_K * 0.9, 1.0 if i % 2 == 0 else -1.0, Color(0.75, 0.72, 0.66))
 
 
 func _draw_arrows() -> void:

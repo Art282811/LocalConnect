@@ -54,6 +54,8 @@ func _draw() -> void:
 		var is_cap := p.owner != -1 and world.realms[p.owner].capital == p.id
 		if close_battle and world.battle_at(p.id) != null:
 			continue  # the battle view draws this village up close
+		if region and zoom >= TownView.SHOW_ZOOM:
+			continue   # the town view draws the whole settlement up close
 		if region:
 			if detail:
 				_draw_villages(p)
@@ -74,7 +76,8 @@ func _draw() -> void:
 			var mine := p.owner != -1 and world.realms[p.owner].is_player
 			var notable := p.level >= 2 or (p.owner != -1 and world.realms[p.owner].capital == p.id)
 			if all_names or mine or notable:
-				_text_centered(p.name, p.center + Vector2(0, 22.0 * icon_scale + fs * 0.6), fs, Color(INK, 0.85), Color(PAPER, 0.7), 2)
+				var below := 22.0 * icon_scale + fs * 0.6 if zoom < TownView.SHOW_ZOOM else 40.0
+				_text_centered(p.name, p.center + Vector2(0, below), fs, Color(INK, 0.85), Color(PAPER, 0.7), 2)
 
 	_draw_realm_names()
 

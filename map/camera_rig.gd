@@ -17,7 +17,7 @@ signal zoom_changed(z: float)
 signal drag_moved(world_pos: Vector2, screen_pos: Vector2)
 signal drag_released(world_pos: Vector2, screen_pos: Vector2)
 
-const MAX_ZOOM := 10.0
+const MAX_ZOOM := 30.0   # close enough to see a single soldier's helm
 const TAP_SLOP := 8.0
 const ZOOM_EASE := 14.0        # higher = snappier zoom easing
 const GLIDE_FRICTION := 5.0    # how quickly a flung map slows down
