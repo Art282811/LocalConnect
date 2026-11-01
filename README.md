@@ -23,7 +23,7 @@ design document (`docs/game-design-document.pdf`).
 - **March:** with your army selected, **hover** any province to see the route and
   how many days it takes; **click or right-click** to send it, or **drag** the
   army onto a province. Marching routes flow with arrows.
-- `Space` pause/resume, `0` slow-motion (¼), `1` / `2` / `3` speed, `Esc` deselect.
+- `Space` pause/resume, `0` slow-motion (¼), `1` / `2` / `3` speed, `Esc` deselect, `F11` (or ⌘⌃F) fullscreen. The window opens maximized.
 - Phone/tablet: one finger pans, two fingers pinch-zoom, tap to select, tap to march.
 
 ## Play it on your phone

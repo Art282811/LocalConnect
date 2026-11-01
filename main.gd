@@ -174,6 +174,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_ESCAPE:
 			_clear_selection()
 			hud.hide_info()
+		KEY_F11:
+			toggle_fullscreen()
+		KEY_F:
+			if k.meta_pressed and k.ctrl_pressed:
+				toggle_fullscreen()
 
 
 # --- World events -------------------------------------------------------------
@@ -1576,6 +1581,13 @@ func _maybe_autosave() -> void:
 	if world.day - _last_autosave_day >= World.DAYS_PER_YEAR:
 		_last_autosave_day = world.day
 		SaveGame.save(world, SaveGame.AUTOSAVE)
+
+
+func toggle_fullscreen() -> void:
+	if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 
 
 func _apply_settings() -> void:

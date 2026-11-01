@@ -510,6 +510,15 @@ func _open_settings() -> void:
 		Settings.autosave = not Settings.autosave
 		_settings_saved()
 	)
+	if not OS.has_feature("mobile"):
+		var full := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+		_button("Fullscreen: %s  (F11)" % ("on" if full else "off"), settings_box).pressed.connect(func() -> void:
+			if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN:
+				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_MAXIMIZED)
+			else:
+				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+			_open_settings.call_deferred()
+		)
 	_button("Close", settings_box).pressed.connect(func() -> void: settings_panel.visible = false)
 	settings_panel.visible = true
 	settings_panel.reset_size()

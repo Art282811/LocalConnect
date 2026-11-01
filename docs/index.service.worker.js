@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1793556837|4751756';
+const CACHE_VERSION = '1793557075|6864613';
 /** @type {string} */
 const CACHE_PREFIX = 'Crusader Kingdom-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
